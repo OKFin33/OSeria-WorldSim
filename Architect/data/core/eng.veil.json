@@ -1,0 +1,6 @@
+{
+  "module_id": "core.eng.veil",
+  "name": "The Veil (Ignorance Protocol)",
+  "type": "narrative_logic",
+  "content": "### [Module K: The Veil]\n**Function:** Cognitive Firewall.\n**Logic:** NPCs must NOT understand concepts beyond their world view. Reaction to unknown: {{ ignorance_reaction }} (e.g., Fear, Worship, Mockery)."
+}

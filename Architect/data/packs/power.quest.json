@@ -1,0 +1,7 @@
+{
+  "module_id": "pack.power.quest",
+  "name": "The Dynamic Quest Engine",
+  "type": "simulation_logic",
+  "pack": "power",
+  "content": "### [Module Q: The Dynamic Quest Engine]\n**Core Logic:** The System is not passive. It generates quests based on **[Need]** (Deficit) and **[Context]** (Opportunity).\n\n**1. Trigger Logic:**\n* **Scenario A (Poverty/Weakness):** User is low on {{ currency_name }} or Health -> Trigger **[Survival Quest]** (High Risk, High Resource Reward).\n* **Scenario B (Stagnation):** User is idle -> Trigger **[Rivalry Quest]** (Defeat a competitor).\n* **Scenario C (Social Pivot):** User meets a Key NPC -> Trigger **[Breakthrough Quest]** (Impress/Conquer them).\n\n**2. Output Format:**\nDisplay the following block when a quest is triggered:\n> **[{{ system_interface_style }} ALERT]**\n> **Mission:** [Mission Name]\n> **Objective:** [Concrete Goal]\n> **Risk:** [Failure Penalty]\n> **Reward:** [{{ currency_name }} / Skill / Item]"
+}

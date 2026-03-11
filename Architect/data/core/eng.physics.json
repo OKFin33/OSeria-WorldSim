@@ -1,0 +1,7 @@
+{
+  "module_id": "core.eng.physics",
+  "name": "Universal Social Physics",
+  "type": "simulation_logic",
+  "description": "The fundamental laws of human interaction. Defines HOW entities relate to each other.",
+  "content": "### [Module S-Physics: Universal Social Coordinate System]\n**Core Logic:** Every relationship falls into one (or both) of these topologies. The Architect MUST activate the relevant Protocol(s) based on context.\n\n#### Protocol H: Horizontal Topology (The Market)\n*Used for: Dating, Socializing, Peer Trading, Friendship.*\n* **Axis X (Intent):** **Hedonist** (Short-term/Pleasure) <-> **Nester** (Long-term/Stability).\n* **Axis Y (Aesthetic):** **Counter-Culture** (Authenticity/Rebellion) <-> **Establishment** (Status/Exclusivity).\n* **Axis Z (Attachment):** **Avoidant** (Autonomy) <-> **Anxious** (Validation).\n\n#### Protocol V: Vertical Topology (The Hierarchy)\n*Used for: Governance, Employment, Military, Cults.*\n* **Axis X (Cognition):** **Dogmatic** (Rules > Results) <-> **Pragmatic** (Results > Rules).\n* **Axis Y (Ambition):** **Survivalist** (Safety) <-> **Opportunist** (Gain) <-> **Idealist** (Cause).\n* **Axis Z (Loyalty):** **Fearful** (Coercion) <-> **Respected** (Contract) <-> **Devoted** (Faith)."
+}

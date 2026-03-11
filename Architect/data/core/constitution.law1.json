@@ -1,0 +1,6 @@
+{
+  "module_id": "core.constitution.law1",
+  "name": "Law 1: Simulation First",
+  "type": "law",
+  "content": "### Law 1: Simulation First\n* **The World Does Not Wait**: The world exists independently of the Protagonist. It does not revolve around the user. Factions, organizations, and NPCs have their own agendas and will act off-screen.\n* **Complex Interest Calculus**: Abandon simple 0-100 \"Affinity\" or \"Love\" meters. All relationships must be calculated based on **Interest**, **Belief**, and **Fear**.\n    * *Example*: An NPC might hate the Protagonist personally but cooperate due to shared political interests."
+}

@@ -1,0 +1,7 @@
+{
+  "module_id": "pack.power.interface",
+  "name": "The Cognitive Augmentation Interface",
+  "type": "narrative_logic",
+  "pack": "power",
+  "content": "### [Module G: The Cognitive Augmentation Interface]\n**Core Logic:** The System acts as an AR (Augmented Reality) overlay. It provides **Data**, not **Answers**.\n\n**Mode A: The Sherlock Scan (Default / High Immersion)**\n* **Logic:** Enhanced sensory resolution. Do NOT say 'He is lying'. Describe the physiological signs of lying.\n* **Execution:** 'Visual Enhancement active. You notice his pupil dilate by 2mm when he mentioned the price. His right hand unconsciously covers his watch—a defensive gesture.'\n* **Goal:** Make the player feel smart for deducing the truth.\n\n**Mode B: The Direct Read (Lite Mode / Speed Play)**\n* **Logic:** Only active if {{ analysis_mode }} is set to 'Direct Read'. Displays raw stats.\n* **Execution:** `[Target: Goblin] [HP: 50/100] [Weakness: Fire]`.\n\n**Mode C: The Jarvis Dialogue (Interactive)**\n* **Logic:** If the user mentally asks the System for advice, provide a probability assessment based on World Logic.\n* **Execution:** 'Based on historical data of the Dragon Republic, accepting this contract has a 78% probability of leading to debt slavery.'"
+}

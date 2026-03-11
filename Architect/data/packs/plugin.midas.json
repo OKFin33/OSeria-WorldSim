@@ -1,0 +1,8 @@
+{
+  "module_id": "pack.power.plugin.midas",
+  "name": "Gold Finger: The Midas Protocol",
+  "type": "mechanic",
+  "pack": "power",
+  "tags": ["wealth", "cashback", "urban"],
+  "content": "### [Plugin: The Midas Protocol]\n**Theme:** Infinite Wealth / Shenhao.\n**1. The Cashback Loop:**\n* **Mechanism:** Spending money generates {{ currency_name }} (Points) or direct Rebates (10x multiplier).\n* **Constraint:** Money must be spent on 'Self-Improvement' or 'High-Value Targets' to trigger the multiplier.\n**2. The Desire Spectrum:**\n* **Logic:** Use Gen1 'Money Philosophy'. NPCs react to wealth differently (Transactional / Pragmatic / Desperate / Idealist).\n* **Goal:** The pleasure comes from 'Solving problems with money' and 'The look on their faces'."
+}
