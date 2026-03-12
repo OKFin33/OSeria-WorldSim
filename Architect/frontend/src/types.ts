@@ -8,6 +8,10 @@ export type UiPhase =
   | "generating"
   | "complete";
 
+export type CompleteViewMode = "success" | "generate_failure" | "fatal_error";
+export type DossierUpdateStatus = "updated" | "conservative_update" | "update_skipped" | "hard_failed";
+export type BubbleKind = "answer" | "advance";
+
 export interface RoutingSnapshot {
   confirmed: string[];
   exploring: string[];
@@ -15,25 +19,24 @@ export interface RoutingSnapshot {
   untouched: string[];
 }
 
-export interface InterviewArtifacts {
-  confirmed_dimensions: string[];
-  emergent_dimensions: string[];
-  excluded_dimensions: string[];
-  narrative_briefing: string;
-  player_profile: string;
+export interface BubbleCandidate {
+  text: string;
+  kind: BubbleKind;
+}
+
+export interface InterviewTurnPayload {
+  turn: number;
+  question: string;
+  bubble_candidates: BubbleCandidate[];
+  routing_snapshot: RoutingSnapshot;
+  dossier_update_status: DossierUpdateStatus;
+  follow_up_signal: "" | "mirror_rejected";
 }
 
 export interface InterviewStepResponse {
   phase: BackendPhase;
   message: string | null;
-  artifacts: InterviewArtifacts | null;
-  raw_payload: {
-    turn: number;
-    question: string;
-    suggested_tags: string[];
-    routing_snapshot: RoutingSnapshot;
-    vibe_flavor: string;
-  } | null;
+  raw_payload: InterviewTurnPayload | null;
 }
 
 export interface StartInterviewResponse {
@@ -43,7 +46,7 @@ export interface StartInterviewResponse {
   raw_payload: null;
 }
 
-export interface BlueprintSummary {
+export interface Blueprint {
   title: string;
   world_summary: string;
   protagonist_hook: string;
@@ -59,7 +62,7 @@ export interface BlueprintSummary {
 }
 
 export interface GenerateResponse {
-  blueprint: BlueprintSummary;
+  blueprint: Blueprint;
   system_prompt: string;
 }
 
@@ -72,4 +75,3 @@ export interface ApiErrorPayload {
 export interface ApiErrorResponse {
   error: ApiErrorPayload;
 }
-

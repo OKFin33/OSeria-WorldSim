@@ -1,18 +1,16 @@
-"""Layer 3 Assembler: stitch the final system prompt."""
+"""Layer 3 Assembler: stitch the final system prompt from frozen inputs."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
-from .common import DATA_DIR, load_json
+from .common import DATA_DIR, dump_json, load_json
 from .conductor import ForgeManifest
+from .domain import AssemblerContext, CompileOutput
 from .llm_client import LLMClientProtocol
 
 CORE_FILES = {
-    "system_role": ["meta.role.json"],
-    "experience": ["meta.experience.json"],
     "constitution": ["constitution.law1.json", "constitution.law2.json", "constitution.law3.json"],
     "engine": [
         "eng.sensory.json",
@@ -43,10 +41,16 @@ class Assembler:
         self.llm = llm_client
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
 
-    async def assemble(self, forged_results: dict[str, str], manifest: ForgeManifest) -> str:
+    async def assemble(
+        self,
+        forged_results: dict[str, str],
+        manifest: ForgeManifest,
+        assembler_context: AssemblerContext,
+    ) -> str:
+        compile_output = manifest.compile_output
         variables = await self._extract_core_variables(
-            briefing=manifest.narrative_briefing,
-            profile=manifest.player_profile,
+            compile_output=compile_output,
+            assembler_context=assembler_context,
         )
 
         output = [
@@ -57,7 +61,6 @@ class Assembler:
             self._load_core_content("meta.experience.json", variables),
             "## III. Immutable Constitution",
         ]
-
         output.extend(self._load_core_content(filename, variables) for filename in CORE_FILES["constitution"])
         output.append("## IV. Engine Protocols")
         output.extend(self._load_core_content(filename, variables) for filename in CORE_FILES["engine"])
@@ -70,22 +73,27 @@ class Assembler:
             output.append("No pre-forged rules were generated. The world remains mostly emergent.")
 
         output.append("## VI. Emergent Dimensions")
-        if manifest.emergent_dimensions:
+        if compile_output.emergent_dimensions:
             output.append("以下维度未预写规则，由运行时自然涌现：")
-            output.extend(f"- {dimension}" for dimension in manifest.emergent_dimensions)
+            output.extend(f"- {dimension}" for dimension in compile_output.emergent_dimensions)
         else:
             output.append("无。")
 
         output.append("## VII. Player Calibration")
-        output.append(manifest.player_profile)
+        output.append(compile_output.player_profile)
 
         return "\n\n".join(output)
 
-    async def _extract_core_variables(self, *, briefing: str, profile: str) -> dict[str, str]:
+    async def _extract_core_variables(
+        self,
+        *,
+        compile_output: CompileOutput,
+        assembler_context: AssemblerContext,
+    ) -> dict[str, str]:
         prompt = (
-            "基于以下世界简报和玩家侧写，提取 8 个关键设定变量并返回 JSON。\n"
-            f"世界简报：{briefing}\n"
-            f"玩家侧写：{profile}\n"
+            "基于以下冻结输入，为 core/meta.experience 与 eng.* 提取 8 个关键变量。\n"
+            f"CompileOutput:\n{dump_json(compile_output.to_dict())}\n\n"
+            f"AssemblerContext:\n{dump_json(assembler_context.to_dict())}\n\n"
             "字段要求：tone_primary, tone_secondary, content_ceiling, humor_density, "
             "sensory_smell_example, sensory_sound_example, tone_filter, ignorance_reaction。"
         )
@@ -108,4 +116,3 @@ class Assembler:
         for key, value in variables.items():
             content = re.sub(r"\{\{\s*" + re.escape(key) + r"\s*\}\}", value, content)
         return content
-

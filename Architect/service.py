@@ -1,4 +1,4 @@
-"""Application service layer for the Architect API."""
+"""Application service layer for the vNext Architect API."""
 
 from __future__ import annotations
 
@@ -6,17 +6,21 @@ from dataclasses import dataclass
 
 from .api_models import (
     BackendPhase,
+    BubbleCandidateModel,
     GenerateRequest,
     GenerateResponse,
-    InterviewArtifactsModel,
     InterviewMessageRequest,
     InterviewStepResponse,
+    InterviewTurnPayloadModel,
+    RoutingSnapshotModel,
     StartInterviewResponse,
 )
 from .assembler import Assembler
 from .conductor import Conductor
+from .domain import BubbleCandidate, CompileOutput, FrozenCompilePackage
 from .forge import Forge
-from .interviewer import InterviewArtifacts, InterviewStepResult, Interviewer
+from .interview_controller import InterviewPhase
+from .interviewer import InterviewStepResult, Interviewer
 from .llm_client import LLMClientProtocol, OpenAICompatibleLLMClient
 from .result_packager import ResultPackager
 from .session_store import InMemorySessionStore, SessionRecord, SessionStore
@@ -51,36 +55,44 @@ class ArchitectService:
     async def start_interview(self) -> StartInterviewResponse:
         interviewer = Interviewer(self.llm_client)
         record = self.session_store.create(interviewer)
+        record.transaction_status = "idle"
         opening = await interviewer.start()
         self.session_store.save(record)
         return StartInterviewResponse(
             session_id=record.session_id,
             phase=BackendPhase(opening.phase.value),
             message=opening.message or "",
-            raw_payload=opening.raw_payload,
         )
 
     async def submit_interview_message(self, request: InterviewMessageRequest) -> InterviewStepResponse:
         record = self._require_session(request.session_id)
-        runtime_message = self._resolve_runtime_message(request)
+        record.transaction_status = "pending_turn"
+        self.session_store.save(record)
 
+        runtime_message = self._resolve_runtime_message(request)
         try:
             step = await record.interviewer.process_user_message(runtime_message)
         except ValueError as exc:
+            record.transaction_status = "idle"
+            self.session_store.save(record)
             raise ArchitectServiceError(
                 code="parse_error",
                 message=str(exc),
-                retryable=False,
+                retryable=True,
                 status_code=502,
             ) from exc
         except RuntimeError as exc:
+            record.transaction_status = "idle"
+            self.session_store.save(record)
             raise ArchitectServiceError(
                 code="internal",
                 message=str(exc),
                 retryable=False,
                 status_code=409,
             ) from exc
-        except Exception as exc:  # pragma: no cover - live API/runtime failures
+        except Exception as exc:  # pragma: no cover
+            record.transaction_status = "idle"
+            self.session_store.save(record)
             raise ArchitectServiceError(
                 code="upstream_unavailable",
                 message=str(exc),
@@ -88,29 +100,50 @@ class ArchitectService:
                 status_code=503,
             ) from exc
 
-        if step.artifacts:
-            record.artifacts = step.artifacts
+        record.twin_dossier = record.interviewer.twin_dossier
+        record.dossier_update_status = record.interviewer.dossier_update_status
+        record.follow_up_signal = record.interviewer.follow_up_signal
+        record.last_updated_turn = record.interviewer.controller.turn
+        if step.phase != InterviewPhase.COMPLETE:
+            record.compile_output = None
+            record.frozen_compile_package = None
+
+        if step.phase == InterviewPhase.COMPLETE:
+            record.transaction_status = "pending_compile"
+            await self._compile_and_freeze(record)
+        else:
+            record.transaction_status = "idle"
+
         self.session_store.save(record)
         return self._serialize_step(step)
 
     async def generate_world(self, request: GenerateRequest) -> GenerateResponse:
         record = self._require_session(request.session_id)
-        artifacts = self._resolve_artifacts(record, request.artifacts)
+        frozen_package = record.frozen_compile_package
+        if frozen_package is None:
+            await self._compile_and_freeze(record)
+            frozen_package = record.frozen_compile_package
+        if frozen_package is None:
+            raise ArchitectServiceError(
+                code="compile_missing",
+                message="Frozen compile package is unavailable.",
+                retryable=True,
+                status_code=409,
+            )
 
         try:
-            manifest = self.conductor.process_interview_results(
-                artifacts.routing_tags,
-                artifacts.narrative_briefing,
-                artifacts.player_profile,
+            manifest = self.conductor.build_manifest(frozen_package.compile_output)
+            forged_results = await Forge(self.llm_client).execute(manifest, frozen_package.forge_context)
+            system_prompt = await Assembler(self.llm_client).assemble(
+                forged_results,
+                manifest,
+                frozen_package.assembler_context,
             )
-            forged_results = await Forge(self.llm_client).execute(manifest)
-            system_prompt = await Assembler(self.llm_client).assemble(forged_results, manifest)
-            blueprint = self.result_packager.build_blueprint_summary(
-                artifacts=artifacts,
+            blueprint = self.result_packager.build_blueprint(
+                compile_output=frozen_package.compile_output,
                 manifest=manifest,
-                system_prompt=system_prompt,
             )
-        except Exception as exc:  # pragma: no cover - exercised under live model failures
+        except Exception as exc:  # pragma: no cover
             raise ArchitectServiceError(
                 code="generate_failed",
                 message=str(exc),
@@ -118,7 +151,7 @@ class ArchitectService:
                 status_code=502,
             ) from exc
 
-        record.artifacts = artifacts
+        record.transaction_status = "idle"
         self.session_store.save(record)
         return GenerateResponse(blueprint=blueprint, system_prompt=system_prompt)
 
@@ -133,56 +166,46 @@ class ArchitectService:
             )
         return record
 
+    async def _compile_and_freeze(self, record: SessionRecord) -> None:
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                compile_output = await record.interviewer.compile_output()
+                record.compile_output = compile_output
+                record.frozen_compile_package = record.interviewer.freeze_compile_package(compile_output)
+                record.transaction_status = "idle"
+                return
+            except Exception as exc:
+                last_error = exc
+
+        raise ArchitectServiceError(
+            code="compile_failed",
+            message=str(last_error),
+            retryable=True,
+            status_code=502,
+        ) from last_error
+
     def _resolve_runtime_message(self, request: InterviewMessageRequest) -> str:
         if request.mirror_action is None:
             return (request.message or "").strip()
-        fallback_map = {"confirm": "推门", "reconsider": "重来"}
-        return (request.message or fallback_map[request.mirror_action]).strip()
-
-    def _resolve_artifacts(
-        self,
-        record: SessionRecord,
-        request_artifacts: InterviewArtifactsModel | None,
-    ) -> InterviewArtifacts:
-        if request_artifacts is not None:
-            return self._deserialize_artifacts(request_artifacts)
-        if record.artifacts is not None:
-            return record.artifacts
-        raise ArchitectServiceError(
-            code="session_expired",
-            message="No interview artifacts available for generation.",
-            retryable=False,
-            status_code=409,
-        )
+        return "推门" if request.mirror_action == "confirm" else "我得再想想"
 
     def _serialize_step(self, step: InterviewStepResult) -> InterviewStepResponse:
-        artifacts = None
-        if step.artifacts is not None:
-            artifacts = self._serialize_artifacts(step.artifacts)
+        raw_payload = None
+        if step.raw_payload is not None:
+            raw_payload = InterviewTurnPayloadModel(
+                turn=int(step.raw_payload["turn"]),
+                question=str(step.raw_payload["question"]),
+                bubble_candidates=[
+                    BubbleCandidateModel(text=item["text"], kind=item["kind"])
+                    for item in step.raw_payload.get("bubble_candidates", [])
+                ],
+                routing_snapshot=RoutingSnapshotModel(**step.raw_payload["routing_snapshot"]),
+                dossier_update_status=step.raw_payload["dossier_update_status"],
+                follow_up_signal=step.raw_payload.get("follow_up_signal", ""),
+            )
         return InterviewStepResponse(
             phase=BackendPhase(step.phase.value),
             message=step.message,
-            artifacts=artifacts,
-            raw_payload=step.raw_payload,
+            raw_payload=raw_payload,
         )
-
-    def _serialize_artifacts(self, artifacts: InterviewArtifacts) -> InterviewArtifactsModel:
-        return InterviewArtifactsModel(
-            confirmed_dimensions=list(artifacts.routing_tags.get("confirmed_dimensions", [])),
-            emergent_dimensions=list(artifacts.routing_tags.get("emergent_dimensions", [])),
-            excluded_dimensions=list(artifacts.routing_tags.get("excluded_dimensions", [])),
-            narrative_briefing=artifacts.narrative_briefing,
-            player_profile=artifacts.player_profile,
-        )
-
-    def _deserialize_artifacts(self, model: InterviewArtifactsModel) -> InterviewArtifacts:
-        return InterviewArtifacts(
-            routing_tags={
-                "confirmed_dimensions": list(model.confirmed_dimensions),
-                "emergent_dimensions": list(model.emergent_dimensions),
-                "excluded_dimensions": list(model.excluded_dimensions),
-            },
-            narrative_briefing=model.narrative_briefing,
-            player_profile=model.player_profile,
-        )
-

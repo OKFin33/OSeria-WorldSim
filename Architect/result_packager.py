@@ -1,12 +1,12 @@
-"""Convert raw generation outputs into product-facing blueprint summaries."""
+"""Convert compile output into the product-facing blueprint."""
 
 from __future__ import annotations
 
 import re
 
-from .api_models import BlueprintSummary, ForgeModuleSummary
+from .api_models import BlueprintModel, ForgeModuleSummary
 from .conductor import ForgeManifest
-from .interviewer import InterviewArtifacts
+from .domain import CompileOutput
 
 _KEYWORD_BANK = [
     "写实",
@@ -27,28 +27,22 @@ _KEYWORD_BANK = [
 
 
 class ResultPackager:
-    def build_blueprint_summary(
-        self,
-        *,
-        artifacts: InterviewArtifacts,
-        manifest: ForgeManifest,
-        system_prompt: str,
-    ) -> BlueprintSummary:
-        world_summary = self._normalize_text(artifacts.narrative_briefing)
+    def build_blueprint(self, *, compile_output: CompileOutput, manifest: ForgeManifest) -> BlueprintModel:
+        world_summary = self._normalize_text(compile_output.narrative_briefing)
         protagonist_hook = self._extract_protagonist_hook(world_summary)
         core_tension = self._extract_core_tension(world_summary)
         title = self._derive_title(world_summary, protagonist_hook, core_tension)
-        tone_keywords = self._extract_tone_keywords(world_summary, artifacts.player_profile)
+        tone_keywords = self._extract_tone_keywords(world_summary, compile_output.player_profile)
 
-        return BlueprintSummary(
+        return BlueprintModel(
             title=title,
             world_summary=world_summary,
             protagonist_hook=protagonist_hook,
             core_tension=core_tension,
             tone_keywords=tone_keywords,
-            player_profile=self._normalize_text(artifacts.player_profile),
-            confirmed_dimensions=list(artifacts.routing_tags.get("confirmed_dimensions", [])),
-            emergent_dimensions=list(artifacts.routing_tags.get("emergent_dimensions", [])),
+            player_profile=self._normalize_text(compile_output.player_profile),
+            confirmed_dimensions=list(compile_output.confirmed_dimensions),
+            emergent_dimensions=list(compile_output.emergent_dimensions),
             forged_modules=[
                 ForgeModuleSummary(dimension=task.dimension, pack_id=task.pack_id)
                 for task in manifest.tasks
@@ -71,7 +65,7 @@ class ResultPackager:
 
     def _extract_core_tension(self, summary: str) -> str:
         for sentence in self._split_sentences(summary):
-            if any(token in sentence for token in ("张力", "冲突", "对抗", "秩序", "资源", "攀爬", "代价")):
+            if any(token in sentence for token in ("张力", "冲突", "对抗", "秩序", "资源", "攀爬", "代价", "压")):
                 return sentence
         sentences = self._split_sentences(summary)
         if len(sentences) > 1:
@@ -92,15 +86,13 @@ class ResultPackager:
         selected = [keyword for keyword in _KEYWORD_BANK if keyword in source]
         if selected:
             return selected[:5]
-
         fallback = []
         if "不" in player_profile or "压" in world_summary:
             fallback.append("压抑")
-        if "慢" in player_profile:
+        if "慢" in player_profile or "克制" in player_profile:
             fallback.append("克制")
         if "城" in world_summary or "都市" in world_summary:
             fallback.append("都市")
         if "成长" in world_summary or "向上" in world_summary:
             fallback.append("成长")
         return fallback[:5] or ["写实", "克制"]
-

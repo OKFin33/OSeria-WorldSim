@@ -56,19 +56,19 @@ class OpenAICompatibleLLMClient:
         load_dotenv()
         api_key = (
             os.getenv("ARCHITECT_LLM_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
             or os.getenv("DEEPSEEK_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
         )
         base_url = (
             os.getenv("ARCHITECT_LLM_BASE_URL")
-            or os.getenv("OPENAI_BASE_URL")
             or os.getenv("DEEPSEEK_BASE_URL")
+            or os.getenv("OPENAI_BASE_URL")
             or "https://api.openai.com/v1"
         )
         model = (
             os.getenv("ARCHITECT_LLM_MODEL")
-            or os.getenv("OPENAI_MODEL")
             or os.getenv("DEEPSEEK_MODEL")
+            or os.getenv("OPENAI_MODEL")
             or "deepseek-chat"
         )
         if not api_key:

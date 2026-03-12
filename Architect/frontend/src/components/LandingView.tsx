@@ -61,4 +61,3 @@ export function LandingView({ prompt, disabled, onSubmit }: LandingViewProps) {
     </section>
   );
 }
-

@@ -3,18 +3,16 @@ from __future__ import annotations
 import unittest
 
 from Architect.conductor import ForgeManifest, ForgeTask
-from Architect.interviewer import InterviewArtifacts
+from Architect.domain import CompileOutput
 from Architect.result_packager import ResultPackager
 
 
 class ResultPackagerTestCase(unittest.TestCase):
-    def test_build_blueprint_summary_extracts_product_fields(self) -> None:
-        artifacts = InterviewArtifacts(
-            routing_tags={
-                "confirmed_dimensions": ["dim:social_friction", "dim:quest_system"],
-                "emergent_dimensions": ["dim:intimacy"],
-                "excluded_dimensions": ["dim:combat_rules"],
-            },
+    def test_build_blueprint_extracts_product_fields(self) -> None:
+        compile_output = CompileOutput(
+            confirmed_dimensions=["dim:social_friction", "dim:quest_system"],
+            emergent_dimensions=["dim:intimacy"],
+            excluded_dimensions=["dim:combat_rules"],
             narrative_briefing=(
                 "主角从城墙下的低位者起步，在都市门阀的夹缝里寻找翻身机会。"
                 "世界的核心冲突来自阶层秩序、资源垄断和向上攀爬必须付出的代价。"
@@ -28,28 +26,22 @@ class ResultPackagerTestCase(unittest.TestCase):
                     pack_id="pack.urban.friction",
                     pack_content="social pack",
                     supplementary_packs=[],
-                    narrative_briefing=artifacts.narrative_briefing,
-                    player_profile=artifacts.player_profile,
                 ),
                 ForgeTask(
                     dimension="dim:quest_system",
                     pack_id="pack.power.quest",
                     pack_content="quest pack",
                     supplementary_packs=[],
-                    narrative_briefing=artifacts.narrative_briefing,
-                    player_profile=artifacts.player_profile,
                 ),
             ],
             emergent_dimensions=["dim:intimacy"],
             excluded_dimensions=["dim:combat_rules"],
-            narrative_briefing=artifacts.narrative_briefing,
-            player_profile=artifacts.player_profile,
+            compile_output=compile_output,
         )
 
-        summary = ResultPackager().build_blueprint_summary(
-            artifacts=artifacts,
+        summary = ResultPackager().build_blueprint(
+            compile_output=compile_output,
             manifest=manifest,
-            system_prompt="unused in current heuristic",
         )
 
         self.assertTrue(summary.title)

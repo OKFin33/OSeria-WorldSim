@@ -18,11 +18,8 @@
   Backend test suite
 - `docs/`
   Active specs, plans, and decision logs
-
-## Historical Area
-
-- `archive/`
-  Legacy references kept only for comparison or reuse. Not part of the active delivery path.
+- `docs/OSeria_technical_overview.md`
+  Cross-project technical overview for hackathon delivery and internal alignment
 
 ## Operational Boundary
 

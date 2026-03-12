@@ -1,39 +1,23 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
 from Architect.api import create_app
-from Architect.api_models import (
-    BackendPhase,
-    BlueprintSummary,
-    ForgeModuleSummary,
-    GenerateRequest,
-    InterviewArtifactsModel,
-    InterviewMessageRequest,
-)
-from Architect.conductor import ForgeManifest
-from Architect.interviewer import InterviewArtifacts
+from Architect.api_models import BackendPhase, GenerateRequest, InterviewMessageRequest
 from Architect.service import ArchitectService, ArchitectServiceError
 from Architect.session_store import InMemorySessionStore
 
 
 class ScriptedLLMClient:
-    def __init__(
-        self,
-        *,
-        chat_responses: list[str] | None = None,
-        generate_responses: list[str] | None = None,
-    ) -> None:
-        self.chat_responses = list(chat_responses or [])
+    def __init__(self, *, json_responses: list[dict], generate_responses: list[str] | None = None) -> None:
+        self.json_responses = list(json_responses)
         self.generate_responses = list(generate_responses or [])
 
     async def chat(self, messages, *, system_prompt=None, temperature=0.7, response_format=None) -> str:
-        if not self.chat_responses:
-            raise AssertionError("No scripted chat response left.")
-        return self.chat_responses.pop(0)
+        raise AssertionError("chat() is not used in vNext tests.")
 
     async def generate(self, *, system_prompt, user_msg, temperature=0.7, response_format=None) -> str:
         if not self.generate_responses:
@@ -41,30 +25,97 @@ class ScriptedLLMClient:
         return self.generate_responses.pop(0)
 
     async def generate_json(self, prompt, *, system_prompt=None, temperature=0.2) -> dict:
-        raise AssertionError("JSON generation is not used in this test.")
+        if not self.json_responses:
+            raise AssertionError("No scripted JSON response left.")
+        return self.json_responses.pop(0)
 
 
 class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.llm = ScriptedLLMClient(
-            chat_responses=[
-                """<<VISIBLE>>
-你已经站在高墙下了。我只想再知道一点点，谁在墙后掌握生死？
-<<END_VISIBLE>>
-<<SYSTEM_JSON>>
-{"turn": 1, "question": "谁在墙后掌握生死？", "suggested_tags": ["城墙下的灰", "门阀的余烬"], "routing_snapshot": {"confirmed": ["dim:social_friction"], "exploring": [], "excluded": [], "untouched": ["dim:intimacy", "dim:quest_system"]}, "vibe_flavor": "grim_urban"}
-<<END_SYSTEM_JSON>>"""
+            json_responses=[
+                {
+                    "routing_snapshot": {
+                        "confirmed": ["dim:social_friction"],
+                        "exploring": [],
+                        "excluded": [],
+                        "untouched": ["dim:quest_system", "dim:intimacy"],
+                    },
+                    "world_dossier": {
+                        "world_premise": "这是一个门阀森严的都市世界。",
+                        "tension_guess": "上位秩序压着低位者。",
+                        "scene_anchor": "高墙下的人抬头看向墙后。",
+                        "open_threads": ["墙后掌权者是谁"],
+                        "soft_signals": {"notable_imagery": ["高墙"], "unstable_hypotheses": []},
+                    },
+                    "player_dossier": {
+                        "fantasy_vector": "从低位向上翻身的人。",
+                        "emotional_seed": "被轻视后翻盘。",
+                        "taste_bias": "压抑、克制。",
+                        "language_register": "有画面感。",
+                        "user_no_go_zones": [],
+                        "soft_signals": {
+                            "notable_phrasing": ["门阀森严"],
+                            "subtext_hypotheses": [],
+                            "style_notes": "冷硬。",
+                        },
+                    },
+                    "change_log": {
+                        "newly_confirmed": ["dim:social_friction"],
+                        "newly_rejected": [],
+                        "needs_follow_up": ["墙后掌权者是谁"],
+                    },
+                },
+                {"mode": "mirror", "mirror_text": "城墙上的人把秩序写成了血统，而你站在城下。"},
+                {"mode": "landing", "visible_text": "最后两个问题。你的性别？化身的性别？", "question": "最后两个问题。"},
+                {
+                    "routing_snapshot": {
+                        "confirmed": ["dim:social_friction"],
+                        "exploring": [],
+                        "excluded": [],
+                        "untouched": ["dim:quest_system", "dim:intimacy"],
+                    },
+                    "world_dossier": {
+                        "world_premise": "这是一个门阀森严的都市世界。",
+                        "tension_guess": "上位秩序压着低位者。",
+                        "scene_anchor": "高墙下的人抬头看向墙后。",
+                        "open_threads": [],
+                        "soft_signals": {"notable_imagery": ["高墙"], "unstable_hypotheses": []},
+                    },
+                    "player_dossier": {
+                        "fantasy_vector": "从低位向上翻身的人。",
+                        "emotional_seed": "被轻视后翻盘。",
+                        "taste_bias": "压抑、克制。",
+                        "language_register": "有画面感。",
+                        "user_no_go_zones": [],
+                        "soft_signals": {
+                            "notable_phrasing": ["门阀森严"],
+                            "subtext_hypotheses": [],
+                            "style_notes": "冷硬。",
+                        },
+                    },
+                    "change_log": {"newly_confirmed": [], "newly_rejected": [], "needs_follow_up": []},
+                },
+                {
+                    "confirmed_dimensions": ["dim:social_friction"],
+                    "emergent_dimensions": ["dim:quest_system", "dim:intimacy"],
+                    "excluded_dimensions": [],
+                    "narrative_briefing": "主角从城下起步，在门阀秩序里寻找翻身机会。",
+                    "player_profile": "玩家偏好写实、压抑、阶层冲突清晰的成长叙事。",
+                },
+                {
+                    "tone_primary": "写实",
+                    "tone_secondary": "压抑",
+                    "content_ceiling": "PG-13",
+                    "humor_density": "严肃零幽默",
+                    "sensory_smell_example": "潮湿墙根混着铁锈的气味",
+                    "sensory_sound_example": "城门齿轮缓慢咬合的摩擦声",
+                    "tone_filter": "冷硬而克制",
+                    "ignorance_reaction": "Mockery",
+                },
             ],
             generate_responses=[
-                "城墙上的人把秩序写成了血统，而你站在城下。",
-                "最后两个问题。你的性别？化身的性别？",
-                """{
-                  "confirmed_dimensions": ["dim:social_friction"],
-                  "emergent_dimensions": ["dim:quest_system", "dim:intimacy"],
-                  "excluded_dimensions": [],
-                  "narrative_briefing": "主角从城墙下起步，在门阀秩序里寻找翻身机会。世界的核心冲突来自阶层与资源垄断。",
-                  "player_profile": "玩家偏好写实、压抑、阶层冲突清晰的成长叙事。"
-                }""",
+                "把每一次寒暄都写成身份试探。",
             ],
         )
         self.service = ArchitectService(
@@ -74,10 +125,9 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
             result_packager=AsyncSafePackager(),
         )
 
-    async def test_service_accepts_structured_mirror_action_and_reuses_stored_artifacts(self) -> None:
+    async def test_service_runs_vnext_flow_and_reuses_frozen_package(self) -> None:
         opening = await self.service.start_interview()
         self.assertEqual(opening.phase, BackendPhase.INTERVIEWING)
-        self.assertTrue(opening.session_id)
 
         mirror = await self.service.submit_interview_message(
             InterviewMessageRequest(
@@ -88,36 +138,23 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mirror.phase, BackendPhase.MIRROR)
 
         landing = await self.service.submit_interview_message(
-            InterviewMessageRequest(
-                session_id=opening.session_id,
-                mirror_action="confirm",
-            )
+            InterviewMessageRequest(session_id=opening.session_id, mirror_action="confirm")
         )
         self.assertEqual(landing.phase, BackendPhase.LANDING)
 
         completed = await self.service.submit_interview_message(
-            InterviewMessageRequest(
-                session_id=opening.session_id,
-                message="男，化身也是男。",
-            )
+            InterviewMessageRequest(session_id=opening.session_id, message="男，化身也是男。")
         )
         self.assertEqual(completed.phase, BackendPhase.COMPLETE)
-        self.assertIsNotNone(completed.artifacts)
+        record = self.service.session_store.get(opening.session_id)
+        assert record is not None
+        self.assertIsNotNone(record.compile_output)
+        self.assertIsNotNone(record.frozen_compile_package)
 
-        with (
-            patch("Architect.service.Forge.execute", new=AsyncMock(return_value={"dim:social_friction": "forged"})),
-            patch("Architect.service.Assembler.assemble", new=AsyncMock(return_value="FINAL PROMPT")),
-        ):
-            generated = await self.service.generate_world(
-                GenerateRequest(session_id=opening.session_id)
-            )
+        generated = await self.service.generate_world(GenerateRequest(session_id=opening.session_id))
 
-        self.assertEqual(generated.system_prompt, "FINAL PROMPT")
-        self.assertTrue(generated.blueprint.title.startswith("主角从城墙下起步"))
-        self.assertEqual(
-            [item.pack_id for item in generated.blueprint.forged_modules],
-            ["pack.urban.friction"],
-        )
+        self.assertIn("把每一次寒暄都写成身份试探。", generated.system_prompt)
+        self.assertEqual(generated.blueprint.confirmed_dimensions, ["dim:social_friction"])
 
     async def test_service_reports_missing_session(self) -> None:
         with self.assertRaises(ArchitectServiceError) as context:
@@ -137,8 +174,7 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         stub_service.submit_interview_message.return_value = {
             "phase": "mirror",
             "message": "mirror text",
-            "artifacts": None,
-            "raw_payload": {"suggested_tags": ["a"]},
+            "raw_payload": None,
         }
         stub_service.generate_world.side_effect = ArchitectServiceError(
             code="generate_failed",
@@ -160,60 +196,33 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message_response.status_code, 200)
         self.assertEqual(message_response.json()["phase"], "mirror")
 
-        generate_response = client.post(
-            "/api/generate",
-            json={"session_id": "session-1"},
-        )
+        generate_response = client.post("/api/generate", json={"session_id": "session-1"})
         self.assertEqual(generate_response.status_code, 502)
         self.assertEqual(generate_response.json()["error"]["code"], "generate_failed")
 
+    async def test_api_wraps_validation_errors_with_error_response(self) -> None:
+        stub_service = AsyncMock()
+        client = TestClient(create_app(stub_service))
+
+        invalid_response = client.post("/api/interview/message", json={"session_id": "session-1"})
+
+        self.assertEqual(invalid_response.status_code, 422)
+        self.assertEqual(invalid_response.json()["error"]["code"], "validation_error")
+        self.assertFalse(invalid_response.json()["error"]["retryable"])
+
 
 class AsyncSafeConductor:
-    def process_interview_results(
-        self,
-        routing_tags: dict[str, list[str]],
-        narrative_briefing: str,
-        player_profile: str,
-    ) -> ForgeManifest:
+    def build_manifest(self, compile_output):
         from Architect.conductor import Conductor
 
-        return Conductor().process_interview_results(routing_tags, narrative_briefing, player_profile)
+        return Conductor().build_manifest(compile_output)
 
 
 class AsyncSafePackager:
-    def build_blueprint_summary(
-        self,
-        *,
-        artifacts: InterviewArtifacts,
-        manifest: ForgeManifest,
-        system_prompt: str,
-    ) -> BlueprintSummary:
+    def build_blueprint(self, *, compile_output, manifest):
         from Architect.result_packager import ResultPackager
 
-        return ResultPackager().build_blueprint_summary(
-            artifacts=artifacts,
-            manifest=manifest,
-            system_prompt=system_prompt,
-        )
-
-
-class ApiModelValidationTestCase(unittest.TestCase):
-    def test_interview_request_requires_message_or_mirror_action(self) -> None:
-        with self.assertRaises(ValueError):
-            InterviewMessageRequest(session_id="session-1")
-
-    def test_generate_request_accepts_serialized_artifacts(self) -> None:
-        request = GenerateRequest(
-            session_id="session-1",
-            artifacts=InterviewArtifactsModel(
-                confirmed_dimensions=["dim:social_friction"],
-                emergent_dimensions=["dim:intimacy"],
-                excluded_dimensions=[],
-                narrative_briefing="brief",
-                player_profile="profile",
-            ),
-        )
-        self.assertEqual(request.artifacts.confirmed_dimensions, ["dim:social_friction"])
+        return ResultPackager().build_blueprint(compile_output=compile_output, manifest=manifest)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+
+# Frontend
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+

@@ -1,4 +1,4 @@
-"""CLI entrypoint for the Architect engine."""
+"""CLI entrypoint for the vNext Architect engine."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ async def run(args: argparse.Namespace) -> int:
     opening = await interviewer.start()
     print(opening.message)
 
-    final_artifacts = None
-    while final_artifacts is None:
+    final_step = None
+    while final_step is None or final_step.phase.value != "complete":
         try:
             user_message = input("> ").strip()
         except EOFError:
@@ -32,17 +32,17 @@ async def run(args: argparse.Namespace) -> int:
         step = await interviewer.process_user_message(user_message)
         if step.message:
             print(step.message)
-        if step.artifacts:
-            final_artifacts = step.artifacts
+        final_step = step
 
-    conductor = Conductor()
-    manifest = conductor.process_interview_results(
-        final_artifacts.routing_tags,
-        final_artifacts.narrative_briefing,
-        final_artifacts.player_profile,
+    compile_output = await interviewer.compile_output()
+    frozen_package = interviewer.freeze_compile_package(compile_output)
+    manifest = Conductor().build_manifest(compile_output)
+    forged_results = await Forge(llm).execute(manifest, frozen_package.forge_context)
+    final_prompt = await Assembler(llm).assemble(
+        forged_results,
+        manifest,
+        frozen_package.assembler_context,
     )
-    forged_results = await Forge(llm).execute(manifest)
-    final_prompt = await Assembler(llm).assemble(forged_results, manifest)
 
     if args.output:
         output_path = Path(args.output)
@@ -55,7 +55,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the OSeria Architect Engine interview pipeline.")
+    parser = argparse.ArgumentParser(description="Run the OSeria Architect vNext interview pipeline.")
     parser.add_argument(
         "--output",
         default=str(PROJECT_ROOT / "architect_system_prompt.txt"),
@@ -72,4 +72,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

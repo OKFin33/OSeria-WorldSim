@@ -10,8 +10,9 @@ import { MirrorView } from "./components/MirrorView";
 import { TutorialHint } from "./components/TutorialHint";
 import type {
   ApiErrorPayload,
-  BlueprintSummary,
-  InterviewArtifacts,
+  Blueprint,
+  BubbleCandidate,
+  CompleteViewMode,
   InterviewStepResponse,
   StartInterviewResponse,
   UiPhase,
@@ -20,9 +21,9 @@ import type {
 const TUTORIAL_BUBBLES = ["这是什么？", "你是谁？", "我该说什么？"] as const;
 
 const TUTORIAL_HINTS: Record<(typeof TUTORIAL_BUBBLES)[number], string> = {
-  "这是什么？": "这是一次世界构建访谈。你随便描述脑海里的第一幕就行。",
-  "你是谁？": "我是造梦者。负责把你的描述编织成一个可运行的世界蓝图。",
-  "我该说什么？": "不用完整设定，只说一个画面、一种气味、一个想扮演的人都可以。",
+  "这是什么？": "这是一次构建访谈。描述你脑海里的第一幕即可。",
+  "你是谁？": "我是造梦者，将把你的描述编织成可运行的世界蓝图。",
+  "我该说什么？": "不必写完整设定，哪怕只说一个画面或气味也可以。",
 };
 
 function mapToUiPhase(response: InterviewStepResponse | StartInterviewResponse): UiPhase {
@@ -32,11 +33,7 @@ function mapToUiPhase(response: InterviewStepResponse | StartInterviewResponse):
   return response.phase;
 }
 
-function toGeneratePayload(artifacts: InterviewArtifacts): InterviewArtifacts {
-  return artifacts;
-}
-
-function blueprintToClipboard(blueprint: BlueprintSummary): string {
+function blueprintToClipboard(blueprint: Blueprint): string {
   return [
     `# ${blueprint.title}`,
     "",
@@ -64,15 +61,14 @@ export default function App() {
   const [uiPhase, setUiPhase] = useState<UiPhase>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentMessage, setCurrentMessage] = useState<string>("");
-  const [currentBubbles, setCurrentBubbles] = useState<string[]>([]);
+  const [currentBubbles, setCurrentBubbles] = useState<BubbleCandidate[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [activeTutorialHint, setActiveTutorialHint] = useState<string | null>(null);
   const [isWaiting, setIsWaiting] = useState(false);
-  const [artifacts, setArtifacts] = useState<InterviewArtifacts | null>(null);
-  const [blueprint, setBlueprint] = useState<BlueprintSummary | null>(null);
+  const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [isPromptInspectorOpen, setIsPromptInspectorOpen] = useState(false);
-  const [generateError, setGenerateError] = useState<ApiErrorPayload | null>(null);
+  const [completeViewMode, setCompleteViewMode] = useState<CompleteViewMode>("success");
+  const [completeError, setCompleteError] = useState<ApiErrorPayload | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   const placeholder = inputValue.length > 500 ? "够了够了，说重点。" : "或者你有不同的想法？";
@@ -104,23 +100,23 @@ export default function App() {
 
   async function boot() {
     setIsWaiting(true);
-    setGenerateError(null);
+    setCompleteError(null);
     try {
       const response = await startInterview();
       startTransition(() => {
         setSessionId(response.session_id);
         setCurrentMessage(response.message);
-        setCurrentBubbles([...TUTORIAL_BUBBLES]);
+        setCurrentBubbles(TUTORIAL_BUBBLES.map((text) => ({ text, kind: "answer" as const })));
         setUiPhase(mapToUiPhase(response));
-        setArtifacts(null);
         setBlueprint(null);
         setSystemPrompt(null);
+        setCompleteViewMode("success");
         setInputValue("");
-        setActiveTutorialHint(null);
         setIsPromptInspectorOpen(false);
       });
     } catch (error) {
-      setGenerateError(normalizeError(error));
+      setCompleteError(normalizeError(error));
+      setCompleteViewMode("fatal_error");
       setUiPhase("complete");
     } finally {
       setIsWaiting(false);
@@ -132,7 +128,6 @@ export default function App() {
       return;
     }
     setIsWaiting(true);
-    setActiveTutorialHint(null);
     try {
       const response = await sendInterviewMessage({
         session_id: sessionId,
@@ -141,7 +136,8 @@ export default function App() {
       setInputValue("");
       applyInterviewResponse(response);
     } catch (error) {
-      setGenerateError(normalizeError(error));
+      setCompleteError(normalizeError(error));
+      setCompleteViewMode("fatal_error");
       setUiPhase("complete");
     } finally {
       setIsWaiting(false);
@@ -160,7 +156,8 @@ export default function App() {
       });
       applyInterviewResponse(response);
     } catch (error) {
-      setGenerateError(normalizeError(error));
+      setCompleteError(normalizeError(error));
+      setCompleteViewMode("fatal_error");
       setUiPhase("complete");
     } finally {
       setIsWaiting(false);
@@ -178,38 +175,39 @@ export default function App() {
         message: payload,
       });
       applyInterviewResponse(response);
-      if (response.artifacts) {
-        await runGenerate(response.artifacts);
+      if (response.phase === "complete") {
+        await runGenerate();
       }
     } catch (error) {
-      setGenerateError(normalizeError(error));
+      setCompleteError(normalizeError(error));
+      setCompleteViewMode("fatal_error");
       setUiPhase("complete");
     } finally {
       setIsWaiting(false);
     }
   }
 
-  async function runGenerate(nextArtifacts?: InterviewArtifacts) {
-    const targetArtifacts = nextArtifacts ?? artifacts;
-    if (!sessionId || !targetArtifacts) {
+  async function runGenerate() {
+    if (!sessionId) {
       return;
     }
     setUiPhase("generating");
-    setGenerateError(null);
+    setCompleteError(null);
     try {
       const response = await generateWorld({
         session_id: sessionId,
-        artifacts: toGeneratePayload(targetArtifacts),
       });
       startTransition(() => {
         setBlueprint(response.blueprint);
         setSystemPrompt(response.system_prompt);
+        setCompleteViewMode("success");
         setUiPhase("complete");
       });
     } catch (error) {
       setBlueprint(null);
       setSystemPrompt(null);
-      setGenerateError(normalizeError(error));
+      setCompleteError(normalizeError(error));
+      setCompleteViewMode("generate_failure");
       setUiPhase("complete");
     }
   }
@@ -219,28 +217,30 @@ export default function App() {
     if (response.message) {
       setCurrentMessage(response.message);
     }
-    if (response.raw_payload?.suggested_tags) {
-      setCurrentBubbles(response.raw_payload.suggested_tags);
+    if (response.raw_payload?.bubble_candidates) {
+      setCurrentBubbles(response.raw_payload.bubble_candidates);
     } else if (nextPhase !== "q1") {
       setCurrentBubbles([]);
-    }
-    if (response.artifacts) {
-      const normalizedArtifacts: InterviewArtifacts = {
-        ...response.artifacts,
-      };
-      setArtifacts(normalizedArtifacts);
     }
     setUiPhase(nextPhase);
   }
 
   async function copyText(text: string, label: string) {
-    await navigator.clipboard.writeText(text);
-    setCopyFeedback(label);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(label);
+    } catch {
+      setCopyFeedback("当前环境不允许复制");
+    }
   }
 
   function handleBubbleClick(text: string) {
     if (uiPhase === "q1") {
-      setActiveTutorialHint(TUTORIAL_HINTS[text as keyof typeof TUTORIAL_HINTS] ?? null);
+      const hint = TUTORIAL_HINTS[text as keyof typeof TUTORIAL_HINTS];
+      if (hint) {
+        setCurrentBubbles([]);
+        setCurrentMessage(hint);
+      }
       return;
     }
     setInputValue((current) => (current ? `${current} ${text}` : text));
@@ -249,17 +249,21 @@ export default function App() {
   const lowerZone =
     uiPhase === "q1" || uiPhase === "interviewing" ? (
       <div className="lower-zone">
-        <BubbleField bubbles={currentBubbles} mode={uiPhase === "q1" ? "tutorial" : "tags"} onBubbleClick={handleBubbleClick} />
-        <TutorialHint hint={uiPhase === "q1" ? activeTutorialHint : null} />
+        <div className="interactive-area">
+          {currentBubbles.length > 0 ? (
+            <BubbleField
+              bubbles={currentBubbles.map((item) => item.text)}
+              mode={uiPhase === "q1" ? "tutorial" : "tags"}
+              onBubbleClick={handleBubbleClick}
+            />
+          ) : null}
+        </div>
         <InputArea
           value={inputValue}
           placeholder={placeholder}
           disabled={isWaiting}
           onChange={(value) => {
             setInputValue(value);
-            if (value) {
-              setActiveTutorialHint(null);
-            }
           }}
           onSubmit={handleConversationSubmit}
         />
@@ -286,9 +290,10 @@ export default function App() {
           <GenerationView />
         ) : uiPhase === "complete" ? (
           <CompleteView
+            mode={resolveCompleteViewMode(completeViewMode, blueprint, completeError)}
             blueprint={blueprint}
             systemPrompt={systemPrompt}
-            generateError={generateError}
+            error={completeError}
             isPromptInspectorOpen={isPromptInspectorOpen}
             copyFeedback={copyFeedback}
             onOpenPromptInspector={() => setIsPromptInspectorOpen(true)}
@@ -319,4 +324,15 @@ function normalizeError(error: unknown): ApiErrorPayload {
     return { code: "internal", message: error.message, retryable: false };
   }
   return { code: "internal", message: "Unknown error", retryable: false };
+}
+
+function resolveCompleteViewMode(
+  mode: CompleteViewMode,
+  blueprint: Blueprint | null,
+  error: ApiErrorPayload | null,
+): CompleteViewMode {
+  if (error) {
+    return mode;
+  }
+  return blueprint ? "success" : mode;
 }

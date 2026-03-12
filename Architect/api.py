@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -24,7 +25,7 @@ def create_app(service: ArchitectService | None = None) -> FastAPI:
     app = FastAPI(title="OSeria Architect API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -39,6 +40,23 @@ def create_app(service: ArchitectService | None = None) -> FastAPI:
             error=ErrorPayload(code=exc.code, message=exc.message, retryable=exc.retryable)
         )
         return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        first_error = exc.errors()[0] if exc.errors() else None
+        detail = "Invalid request payload."
+        if first_error is not None:
+            location = ".".join(str(part) for part in first_error.get("loc", []) if part != "body")
+            message = str(first_error.get("msg", "Invalid request payload."))
+            detail = f"{location}: {message}" if location else message
+        payload = ErrorResponse(
+            error=ErrorPayload(
+                code="validation_error",
+                message=detail,
+                retryable=False,
+            )
+        )
+        return JSONResponse(status_code=422, content=payload.model_dump())
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> HealthResponse:

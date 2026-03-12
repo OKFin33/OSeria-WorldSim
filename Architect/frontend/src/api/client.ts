@@ -1,7 +1,6 @@
 import type {
   ApiErrorPayload,
   GenerateResponse,
-  InterviewArtifacts,
   InterviewStepResponse,
   StartInterviewResponse,
 } from "../types";
@@ -17,6 +16,14 @@ export class ApiError extends Error {
   }
 }
 
+function fallbackError(message = "Unknown error"): ApiErrorPayload {
+  return {
+    code: "internal",
+    message,
+    retryable: false,
+  };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -27,14 +34,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  const contentType = response.headers.get("content-type") ?? "";
+  let data: unknown = null;
+  if (text) {
+    if (contentType.includes("application/json")) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+    } else {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+    }
+  }
+
   if (!response.ok) {
-    const payload = data?.error ?? {
-      code: "internal",
-      message: "Unknown error",
-      retryable: false,
-    };
+    const payload =
+      typeof data === "object" && data !== null && "error" in data
+        ? (data as { error?: ApiErrorPayload }).error ?? fallbackError(text || response.statusText)
+        : fallbackError(text || response.statusText || "Unknown error");
     throw new ApiError(payload);
+  }
+
+  if (data === null && text) {
+    throw new ApiError(fallbackError("Server returned an unreadable response."));
   }
   return data as T;
 }
@@ -54,13 +81,9 @@ export function sendInterviewMessage(input: {
   });
 }
 
-export function generateWorld(input: {
-  session_id: string;
-  artifacts: InterviewArtifacts;
-}): Promise<GenerateResponse> {
+export function generateWorld(input: { session_id: string }): Promise<GenerateResponse> {
   return request<GenerateResponse>("/api/generate", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
-
