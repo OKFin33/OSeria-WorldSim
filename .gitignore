@@ -19,3 +19,8 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# Runtime local state
+.runtime_sessions/
+Runtime/.runtime-backend.log
+Runtime/frontend/vite.config.js
+Runtime/frontend/vite.config.d.ts
