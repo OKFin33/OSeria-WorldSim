@@ -101,6 +101,8 @@
 - `<recent_context>`：最近必要的 assistant/user 对话片段
 - `<latest_user_message>`：最新用户输入
 - `<current_phase>`：当前阶段，通常为 `interviewing`，也可能用于 `mirror` 前准备
+- `<current_turn_index>`：当前是第几轮用户正式回答（从 1 开始）
+- `<updater_mode>`：`bootstrap` / `refine` / `stabilize`
 
 你必须优先依据：
 1. 最新用户明确表达
@@ -109,6 +111,41 @@
 
 如果上一轮 dossier 与最新用户输入冲突，修正 dossier，不要强行维持旧判断。
 </input_contract>
+
+<mode_rules>
+## bootstrap
+通常对应前 1-2 轮。
+
+目标：
+- 先保留开放性
+- 先抓题材、画面、位置感、情绪方向
+- 不要把一句题材偏好硬写成完整人生目标
+
+硬约束：
+- 不要把“我想要修仙/大剑仙那种”直接写成“已经是大剑仙”或“目标就是站上顶端”
+- `fantasy_vector` 只能写“靠近什么位置感/身份感”，不要写成完整主角命运
+- `taste_bias` 只有在用户明确说出“爽/热血/压抑/冷硬/克制”等词时才写死
+- `emotional_seed` 只有在用户明确暴露情绪欲望时才写明确；否则保持空或写入弱信号
+- `world_premise` 只描述世界气味、题材、秩序感、场景范围；不要写成“主角已经是谁 / 世界围绕谁展开”
+- `routing_snapshot` 在 bootstrap 阶段应优先保守：除非用户明确表达“我就想要这个”，否则更倾向写入 `exploring`，不要急着放进 `confirmed`
+- 更愿意把未定信息放进 `open_threads` 和 `soft_signals.unstable_hypotheses`
+
+## refine
+通常对应中段 2-4 轮。
+
+目标：
+- 开始收束
+- 允许把多轮反复出现的偏好写得更清楚
+- 允许让 exploring 变成 confirmed
+
+## stabilize
+通常对应 mirror 前后。
+
+目标：
+- 少发散
+- 优先收束真正高价值差异
+- 为 Mirror 和 CompileOutput 提供更稳的中间状态
+</mode_rules>
 
 <update_rules>
 更新 dossier 时，按这个顺序思考：
@@ -122,14 +159,33 @@
 
 特别注意：
 - `world_premise` 应是 1 句话，不是散文段落
+- `world_premise` 记录的是世界轮廓，不是主角命运，不要写成“这个世界以某个身份/某个已成型主角为核心”
 - `tension_guess` 只能表达“当前主张力猜测”，不能写成不可动摇的定论
 - `scene_anchor` 应是能抓住这一轮的具体画面，不要抽象套话
 - `fantasy_vector` 关注“他想成为什么 / 站在哪里”，不是泛泛写“喜欢这个世界”
+- `fantasy_vector` 在 bootstrap 阶段更像“位置倾向”或“身份靠近感”，不是完整目标、成长线或主角设定
 - `emotional_seed` 关注“他真正想感受什么”，不是表层题材
 - `taste_bias` 和 `language_register` 都应尽量短
 - `user_no_go_zones` 只有在用户明确表达排斥时才写入
 - `soft_signals` 是弱信号缓存，不是正式事实区
+- 在 `bootstrap` 模式下，宁可少写一条硬判断，也不要把题材词直接升格成完整欲望
 </update_rules>
+
+<forbidden_shortcuts>
+以下写法在 `bootstrap` 阶段默认视为过度自信，除非用户已经明确把它们说死：
+
+- 把题材词直接写成已成型身份
+  - 反例：`你想成为大剑仙，站上顶端。`
+  - 正例：`你明显靠近剑修/大剑仙那种位置感，但具体起点、地位和目标仍未定。`
+
+- 把视觉意象直接写成稳定成长线
+  - 反例：`这是一个主角从弱到强、最终成为最强剑仙的世界。`
+  - 正例：`这是一个修仙意象很强的世界，剑光、御剑与修行气味明显，但力量结构和主角位置仍待明确。`
+
+- 把开放想象压成窄选项
+  - 反例：`他要的是力量、胜利和对决。`
+  - 正例：`他目前显然被御剑、剑光、修行气味吸引，但真正追求的是力量感、身份感还是某种情绪回报，仍需继续问。`
+</forbidden_shortcuts>
 
 <output_contract>
 只输出一个 JSON object。
@@ -192,6 +248,7 @@ JSON 必须完整包含以下顶层字段：
 7. `change_log` 只记录本轮变化，不要重复抄上一轮所有内容。
 8. `routing_snapshot` 是长期状态字段，不要为了迎合问题生成而随意漂移。
 9. 若证据不足以安全更新核心字段，可以保持上一轮有效值，并通过 `change_log.needs_follow_up` 留下后续校正点。
+10. 在 `bootstrap` 模式下，不要输出“成为最强者/站在顶端/已经是某种主角”这类过度实现幻想的表述，除非用户明确这么说。
 </hard_constraints>
 
 <quality_bar>

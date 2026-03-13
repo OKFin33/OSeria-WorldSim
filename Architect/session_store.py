@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from .domain import CompileOutput, DossierUpdateStatus, FrozenCompilePackage, TwinDossier, TurnTransactionStatus
@@ -28,6 +28,7 @@ class SessionRecord:
     dossier_update_status: DossierUpdateStatus = "updated"
     transaction_status: TurnTransactionStatus = "idle"
     follow_up_signal: str = ""
+    debug_events: list[dict[str, Any]] = field(default_factory=list)
     schema_version: str = "vnext"
     created_at: datetime = field(default_factory=_utcnow)
     updated_at: datetime = field(default_factory=_utcnow)

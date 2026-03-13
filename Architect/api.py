@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -33,6 +33,11 @@ def create_app(service: ArchitectService | None = None) -> FastAPI:
 
     if service is not None:
         app.state.architect_service = service
+
+    def _ensure_local_debug_access(request: Request) -> None:
+        host = request.client.host if request.client else ""
+        if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+            raise HTTPException(status_code=404, detail="Not found")
 
     @app.exception_handler(ArchitectServiceError)
     async def handle_architect_error(_: Request, exc: ArchitectServiceError) -> JSONResponse:
@@ -73,6 +78,11 @@ def create_app(service: ArchitectService | None = None) -> FastAPI:
     @app.post("/api/generate")
     async def generate_world(request: GenerateRequest):
         return await _get_service(app).generate_world(request)
+
+    @app.get("/api/debug/session/{session_id}")
+    async def debug_session(session_id: str, request: Request):
+        _ensure_local_debug_access(request)
+        return _get_service(app).get_debug_session(session_id)
 
     return app
 

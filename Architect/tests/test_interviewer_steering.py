@@ -28,6 +28,21 @@ class RecordedLLMClient:
 
 
 class InterviewerVNextTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_dossier_update_mode_follows_two_two_one_rhythm(self) -> None:
+        llm = RecordedLLMClient(json_responses=[])
+        interviewer = Interviewer(llm)
+
+        interviewer.controller.turn = 0
+        self.assertEqual(interviewer._dossier_update_mode(), "bootstrap")
+        interviewer.controller.turn = 1
+        self.assertEqual(interviewer._dossier_update_mode(), "bootstrap")
+        interviewer.controller.turn = 2
+        self.assertEqual(interviewer._dossier_update_mode(), "refine")
+        interviewer.controller.turn = 3
+        self.assertEqual(interviewer._dossier_update_mode(), "refine")
+        interviewer.controller.turn = 4
+        self.assertEqual(interviewer._dossier_update_mode(), "stabilize")
+
     async def test_interview_turn_returns_bubbles_and_typed_payload(self) -> None:
         llm = RecordedLLMClient(
             json_responses=[
@@ -98,6 +113,61 @@ class InterviewerVNextTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(step.raw_payload["dossier_update_status"], "updated")
         self.assertEqual(step.raw_payload["routing_snapshot"]["confirmed"], ["dim:social_friction"])
+
+    async def test_bootstrap_guardrails_soften_overcommitted_first_turn_dossier(self) -> None:
+        llm = RecordedLLMClient(
+            json_responses=[
+                {
+                    "routing_snapshot": {
+                        "confirmed": ["dim:power_progression", "dim:combat_rules"],
+                        "exploring": [],
+                        "excluded": [],
+                        "untouched": ["dim:social_friction", "dim:quest_system", "dim:intimacy"],
+                    },
+                    "world_dossier": {
+                        "world_premise": "一个修仙世界，主角追求成为大剑仙，以御剑飞行和剑光纵横为核心能力。",
+                        "tension_guess": "主角从弱小到强大的成长。",
+                        "scene_anchor": "主角御剑飞行，剑光划破天际。",
+                        "open_threads": ["门派与规则是什么"],
+                        "soft_signals": {
+                            "notable_imagery": ["御剑飞行", "剑光纵横"],
+                            "unstable_hypotheses": [],
+                        },
+                    },
+                    "player_dossier": {
+                        "fantasy_vector": "成为大剑仙，掌握御剑飞行和强大剑术。",
+                        "emotional_seed": "追求强大、自由和掌控感。",
+                        "taste_bias": "偏热血、爽感",
+                        "language_register": "简洁、直接、带有武侠或仙侠色彩",
+                        "user_no_go_zones": [],
+                        "soft_signals": {
+                            "notable_phrasing": ["我想要修仙，大剑仙那种，御剑飞行，剑光纵横。"],
+                            "subtext_hypotheses": [],
+                            "style_notes": "快节奏、高能量。",
+                        },
+                    },
+                    "change_log": {
+                        "newly_confirmed": ["修仙题材"],
+                        "newly_rejected": [],
+                        "needs_follow_up": ["这个世界真正压住人的是什么"],
+                    },
+                },
+                {
+                    "mode": "interview",
+                    "visible_text": "剑光划破云霄，但那只是第一眼。告诉我，那股让你抬头的锋芒，第一次真正有了重量时，周围是什么样子？",
+                    "question": "那股让你抬头的锋芒，第一次真正有了重量时，周围是什么样子？",
+                },
+                {"bubble_candidates": []},
+            ]
+        )
+        interviewer = Interviewer(llm)
+        await interviewer.start()
+
+        await interviewer.process_user_message("我想要修仙，大剑仙那种，御剑飞行，剑光纵横。")
+
+        self.assertNotIn("成为大剑仙", interviewer.twin_dossier.player_dossier.fantasy_vector)
+        self.assertNotIn("主角追求成为大剑仙", interviewer.twin_dossier.world_dossier.world_premise)
+        self.assertEqual(interviewer.twin_dossier.player_dossier.taste_bias, "")
 
     async def test_reject_returns_single_recovery_question_without_running_dossier_updater(self) -> None:
         llm = RecordedLLMClient(

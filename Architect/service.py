@@ -57,6 +57,8 @@ class ArchitectService:
         record = self.session_store.create(interviewer)
         record.transaction_status = "idle"
         opening = await interviewer.start()
+        if opening.debug_trace is not None:
+            record.debug_events.append(opening.debug_trace)
         self.session_store.save(record)
         return StartInterviewResponse(
             session_id=record.session_id,
@@ -104,6 +106,8 @@ class ArchitectService:
         record.dossier_update_status = record.interviewer.dossier_update_status
         record.follow_up_signal = record.interviewer.follow_up_signal
         record.last_updated_turn = record.interviewer.controller.turn
+        if step.debug_trace is not None:
+            record.debug_events.append(step.debug_trace)
         if step.phase != InterviewPhase.COMPLETE:
             record.compile_output = None
             record.frozen_compile_package = None
@@ -152,8 +156,46 @@ class ArchitectService:
             ) from exc
 
         record.transaction_status = "idle"
+        record.debug_events.append(
+            {
+                "event": "generate_world",
+                "phase": BackendPhase.COMPLETE.value,
+                "compile_output": frozen_package.compile_output.to_dict(),
+                "forge_context": frozen_package.forge_context.to_dict(),
+                "assembler_context": frozen_package.assembler_context.to_dict(),
+                "manifest": {
+                    "confirmed_dimensions": list(manifest.compile_output.confirmed_dimensions),
+                    "tasks": [
+                        {"dimension": task.dimension, "pack_id": task.pack_id}
+                        for task in manifest.tasks
+                    ],
+                },
+                "blueprint": blueprint.model_dump(),
+                "system_prompt_preview": system_prompt[:1200],
+            }
+        )
         self.session_store.save(record)
         return GenerateResponse(blueprint=blueprint, system_prompt=system_prompt)
+
+    def get_debug_session(self, session_id: str) -> dict:
+        record = self._require_session(session_id)
+        return {
+            "session_id": record.session_id,
+            "schema_version": record.schema_version,
+            "phase": record.interviewer.controller.phase.value,
+            "turn": record.interviewer.controller.turn,
+            "transaction_status": record.transaction_status,
+            "dossier_update_status": record.dossier_update_status,
+            "follow_up_signal": record.follow_up_signal,
+            "last_updated_turn": record.last_updated_turn,
+            "messages": [dict(message) for message in record.interviewer.messages],
+            "twin_dossier": record.twin_dossier.to_dict(),
+            "compile_output": record.compile_output.to_dict() if record.compile_output else None,
+            "frozen_compile_package": (
+                record.frozen_compile_package.to_dict() if record.frozen_compile_package else None
+            ),
+            "debug_events": list(record.debug_events),
+        }
 
     def _require_session(self, session_id: str) -> SessionRecord:
         record = self.session_store.get(session_id)
@@ -174,6 +216,15 @@ class ArchitectService:
                 record.compile_output = compile_output
                 record.frozen_compile_package = record.interviewer.freeze_compile_package(compile_output)
                 record.transaction_status = "idle"
+                record.debug_events.append(
+                    {
+                        "event": "compile_freeze",
+                        "phase": BackendPhase.COMPLETE.value,
+                        "compile_output": compile_output.to_dict(),
+                        "forge_context": record.frozen_compile_package.forge_context.to_dict(),
+                        "assembler_context": record.frozen_compile_package.assembler_context.to_dict(),
+                    }
+                )
                 return
             except Exception as exc:
                 last_error = exc

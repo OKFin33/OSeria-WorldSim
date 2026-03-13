@@ -210,6 +210,26 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(invalid_response.json()["error"]["code"], "validation_error")
         self.assertFalse(invalid_response.json()["error"]["retryable"])
 
+    async def test_debug_session_endpoint_exposes_dossier_and_trace(self) -> None:
+        opening = await self.service.start_interview()
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(
+                session_id=opening.session_id,
+                message="我想要一个门阀森严、普通人很难翻身的都市世界。",
+            )
+        )
+
+        client = TestClient(create_app(self.service))
+        debug_response = client.get(f"/api/debug/session/{opening.session_id}")
+
+        self.assertEqual(debug_response.status_code, 200)
+        payload = debug_response.json()
+        self.assertEqual(payload["session_id"], opening.session_id)
+        self.assertIn("twin_dossier", payload)
+        self.assertEqual(payload["twin_dossier"]["world_dossier"]["world_premise"], "这是一个门阀森严的都市世界。")
+        self.assertEqual(payload["debug_events"][0]["event"], "start")
+        self.assertEqual(payload["debug_events"][-1]["event"], "interview_to_mirror")
+
 
 class AsyncSafeConductor:
     def build_manifest(self, compile_output):

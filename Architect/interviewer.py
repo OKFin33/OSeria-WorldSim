@@ -27,6 +27,7 @@ class InterviewStepResult:
     phase: InterviewPhase
     message: str | None = None
     raw_payload: dict[str, Any] | None = None
+    debug_trace: dict[str, Any] | None = None
 
 
 class Interviewer:
@@ -55,7 +56,16 @@ class Interviewer:
         if not self.started:
             self.started = True
             self.messages.append({"role": "assistant", "content": OPENING_QUESTION})
-        return InterviewStepResult(phase=self.controller.phase, message=OPENING_QUESTION)
+        return InterviewStepResult(
+            phase=self.controller.phase,
+            message=OPENING_QUESTION,
+            debug_trace={
+                "event": "start",
+                "phase_before": InterviewPhase.INTERVIEWING.value,
+                "phase_after": self.controller.phase.value,
+                "opening_question": OPENING_QUESTION,
+            },
+        )
 
     async def process_user_message(self, user_message: str) -> InterviewStepResult:
         if not self.started:
@@ -99,6 +109,8 @@ class Interviewer:
         if current_phase != "interviewing":
             raise RuntimeError("Only interviewing turns can trigger dossier updates.")
 
+        dossier_before = self.twin_dossier.to_dict()
+        user_message = self._latest_user_message()
         update_status = await self._run_dossier_updater()
         next_phase = self.controller.process_turn(
             {"routing_snapshot": self.twin_dossier.routing_snapshot.to_dict()}
@@ -108,7 +120,21 @@ class Interviewer:
             mirror_text = await self._compose_mirror()
             self.messages.append({"role": "assistant", "content": mirror_text})
             self.follow_up_signal = ""
-            return InterviewStepResult(phase=InterviewPhase.MIRROR, message=mirror_text)
+            return InterviewStepResult(
+                phase=InterviewPhase.MIRROR,
+                message=mirror_text,
+                debug_trace={
+                    "event": "interview_to_mirror",
+                    "phase_before": current_phase,
+                    "phase_after": InterviewPhase.MIRROR.value,
+                    "user_message": user_message,
+                    "dossier_before": dossier_before,
+                    "dossier_after": self.twin_dossier.to_dict(),
+                    "dossier_update_status": update_status,
+                    "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
+                    "mirror_text": mirror_text,
+                },
+            )
 
         question_result = await self._compose_interview_response()
         return InterviewStepResult(
@@ -121,6 +147,22 @@ class Interviewer:
                 update_status=update_status,
                 follow_up_signal=self.follow_up_signal,
             ),
+            debug_trace={
+                "event": "interview_turn",
+                "phase_before": current_phase,
+                "phase_after": InterviewPhase.INTERVIEWING.value,
+                "user_message": user_message,
+                "dossier_before": dossier_before,
+                "dossier_after": self.twin_dossier.to_dict(),
+                "dossier_update_status": update_status,
+                "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
+                "visible_text": question_result["visible_text"],
+                "question": question_result["question"],
+                "bubble_candidates": [
+                    candidate.to_dict() for candidate in question_result["bubble_candidates"]
+                ],
+                "follow_up_signal": self.follow_up_signal,
+            },
         )
 
     async def _handle_mirror_feedback(self, user_message: str) -> InterviewStepResult:
@@ -129,7 +171,20 @@ class Interviewer:
             next_phase = self.controller.process_turn({})
             landing = await self._compose_landing()
             self.messages.append({"role": "assistant", "content": landing})
-            return InterviewStepResult(phase=next_phase, message=landing)
+            return InterviewStepResult(
+                phase=next_phase,
+                message=landing,
+                debug_trace={
+                    "event": "mirror_confirm",
+                    "phase_before": InterviewPhase.MIRROR.value,
+                    "phase_after": next_phase.value,
+                    "user_message": user_message,
+                    "mirror_disposition": disposition,
+                    "landing_text": landing,
+                    "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
+                    "dossier_update_status": self.dossier_update_status,
+                },
+            )
 
         self.controller.phase = InterviewPhase.INTERVIEWING
         if "mirror_rejected" not in self.twin_dossier.change_log.needs_follow_up:
@@ -146,15 +201,47 @@ class Interviewer:
                 update_status=self.dossier_update_status,
                 follow_up_signal="mirror_rejected",
             ),
+            debug_trace={
+                "event": "mirror_reject_recovery",
+                "phase_before": InterviewPhase.MIRROR.value,
+                "phase_after": InterviewPhase.INTERVIEWING.value,
+                "user_message": user_message,
+                "mirror_disposition": disposition,
+                "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
+                "dossier_after": self.twin_dossier.to_dict(),
+                "dossier_update_status": self.dossier_update_status,
+                "visible_text": question_result["visible_text"],
+                "question": question_result["question"],
+                "bubble_candidates": [
+                    candidate.to_dict() for candidate in question_result["bubble_candidates"]
+                ],
+                "follow_up_signal": "mirror_rejected",
+            },
         )
 
     async def _handle_landing_submission(self) -> InterviewStepResult:
+        dossier_before = self.twin_dossier.to_dict()
+        user_message = self._latest_user_message()
         await self._run_dossier_updater()
         self.controller.process_turn({})
-        return InterviewStepResult(phase=InterviewPhase.COMPLETE, message=None)
+        return InterviewStepResult(
+            phase=InterviewPhase.COMPLETE,
+            message=None,
+            debug_trace={
+                "event": "landing_submit",
+                "phase_before": InterviewPhase.LANDING.value,
+                "phase_after": InterviewPhase.COMPLETE.value,
+                "user_message": user_message,
+                "dossier_before": dossier_before,
+                "dossier_after": self.twin_dossier.to_dict(),
+                "dossier_update_status": self.dossier_update_status,
+                "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
+            },
+        )
 
     async def _run_dossier_updater(self) -> DossierUpdateStatus:
         previous = self.twin_dossier
+        updater_mode = self._dossier_update_mode()
         payload = {
             "previous_world_dossier": previous.world_dossier.to_dict(),
             "previous_player_dossier": previous.player_dossier.to_dict(),
@@ -162,6 +249,8 @@ class Interviewer:
             "recent_context": self._recent_context(limit=6),
             "latest_user_message": self._latest_user_message(),
             "current_phase": self.controller.phase.value,
+            "current_turn_index": self.controller.turn + 1,
+            "updater_mode": updater_mode,
         }
 
         last_error: Exception | None = None
@@ -172,7 +261,10 @@ class Interviewer:
                     user_payload=payload,
                     temperature=0.15,
                 )
-                self.twin_dossier = self._normalize_twin_dossier(TwinDossier.from_dict(updated))
+                self.twin_dossier = self._normalize_twin_dossier(
+                    TwinDossier.from_dict(updated),
+                    updater_mode=updater_mode,
+                )
                 self.dossier_update_status = "updated"
                 return self.dossier_update_status
             except Exception as exc:
@@ -339,9 +431,58 @@ class Interviewer:
             ]
         )
 
-    def _normalize_twin_dossier(self, dossier: TwinDossier) -> TwinDossier:
+    def _normalize_twin_dossier(self, dossier: TwinDossier, *, updater_mode: str) -> TwinDossier:
         dossier.routing_snapshot = self._normalize_routing_snapshot(dossier.routing_snapshot)
+        if updater_mode == "bootstrap":
+            dossier = self._apply_bootstrap_guardrails(dossier)
         return dossier
+
+    def _dossier_update_mode(self) -> str:
+        if self.controller.turn <= 1:
+            return "bootstrap"
+        if self.controller.turn <= 3:
+            return "refine"
+        return "stabilize"
+
+    def _apply_bootstrap_guardrails(self, dossier: TwinDossier) -> TwinDossier:
+        user_message = self._latest_user_message()
+        lowered = user_message.lower()
+
+        world = dossier.world_dossier
+        player = dossier.player_dossier
+
+        if world.world_premise:
+            world.world_premise = self._soften_bootstrap_world_premise(world.world_premise)
+        if player.fantasy_vector:
+            player.fantasy_vector = self._soften_bootstrap_fantasy_vector(player.fantasy_vector)
+        if player.taste_bias and not any(token in user_message for token in ("爽", "热血", "燃", "轻松", "压抑", "冷硬", "克制")):
+            player.taste_bias = ""
+        if player.emotional_seed and not any(
+            token in lowered for token in ("自由", "翻身", "不认命", "认可", "复仇", "爽", "压迫", "掌控")
+        ):
+            player.emotional_seed = ""
+        return dossier
+
+    def _soften_bootstrap_world_premise(self, text: str) -> str:
+        softened = text.strip()
+        softened = softened.replace("主角追求成为", "带有")
+        softened = softened.replace("以大剑仙为核心", "以剑修意象为强烈核心")
+        softened = softened.replace("主角", "这个世界")
+        return softened
+
+    def _soften_bootstrap_fantasy_vector(self, text: str) -> str:
+        softened = text.strip()
+        replacements = {
+            "成为大剑仙，掌握御剑飞行和强大剑术。": "靠近剑修/大剑仙那种位置感，但具体身份与起点还未定。",
+            "成为": "靠近",
+            "站在": "接近",
+            "顶端": "高处",
+            "最强": "更有分量",
+            "无敌": "不再轻易被压住",
+        }
+        for source, target in replacements.items():
+            softened = softened.replace(source, target)
+        return softened
 
     def _normalize_routing_snapshot(self, snapshot):
         known_dimensions = [dimension.id for dimension in self.dimension_registry.dimensions]

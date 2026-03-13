@@ -306,6 +306,13 @@ class FrozenCompilePackage:
     forge_context: ForgeContext
     assembler_context: AssemblerContext
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "compile_output": self.compile_output.to_dict(),
+            "forge_context": self.forge_context.to_dict(),
+            "assembler_context": self.assembler_context.to_dict(),
+        }
+
 
 def build_forge_context(dossier: TwinDossier) -> ForgeContext:
     return ForgeContext(
