@@ -3,6 +3,7 @@ import type { ApiErrorPayload } from "../types";
 interface FatalErrorViewProps {
   error: ApiErrorPayload;
   onRestart: () => void;
+  restartLabel?: string;
 }
 
 function resolveFatalHeadline(error: ApiErrorPayload): string {
@@ -15,7 +16,7 @@ function resolveFatalHeadline(error: ApiErrorPayload): string {
   return "这个世界暂时接不回来了。";
 }
 
-export function FatalErrorView({ error, onRestart }: FatalErrorViewProps) {
+export function FatalErrorView({ error, onRestart, restartLabel = "再造一个世界" }: FatalErrorViewProps) {
   return (
     <>
       <div className="complete-view__hero">
@@ -29,7 +30,7 @@ export function FatalErrorView({ error, onRestart }: FatalErrorViewProps) {
       </div>
       <div className="result-actions">
         <button className="text-button" type="button" onClick={onRestart}>
-          再造一个世界
+          {restartLabel}
         </button>
       </div>
     </>

@@ -84,6 +84,11 @@ def create_app(service: ArchitectService | None = None) -> FastAPI:
         _ensure_local_debug_access(request)
         return _get_service(app).get_debug_session(session_id)
 
+    @app.get("/api/debug/session/{session_id}/replay-bundle")
+    async def debug_replay_bundle(session_id: str, request: Request):
+        _ensure_local_debug_access(request)
+        return _get_service(app).get_replay_bundle(session_id)
+
     return app
 
 

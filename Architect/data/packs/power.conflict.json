@@ -3,5 +3,8 @@
   "name": "Conflict Physics",
   "type": "simulation_logic",
   "pack": "power",
+  "forge_mode": "full_forged",
+  "module_scope": "只定义能力冲突和概念压制，不负责成长阶段或奖励经济。",
+  "rewrite_budget": "high",
   "content": "### [Module C: Conflict Physics]\n**1. Concept Priority (The Rule of Cool):**\n* **Logic:** A High-Rank Skill (Concept) beats High-Raw Stats (Numbers).\n* **Example:** An S-Rank 'Absolute Defense' (Concept) blocks an A-Rank 'Nuclear Blast' (Stats), even if the user is low level.\n\n**2. Logic Exclusion (No Infinite Loop):**\n* **Logic:** You cannot gain benefits from two contradictory states simultaneously.\n* **Example:** If you use 'Deep Work' to gain INT, you cannot also gain the 'Rested' buff. Stamina is finite."
 }

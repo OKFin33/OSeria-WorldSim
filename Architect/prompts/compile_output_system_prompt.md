@@ -77,6 +77,7 @@
 - 表示访谈结束时未被明确确认、也未被明确排除，但仍保留为世界自然涌现空间的维度
 - 默认应主要来自 `routing_snapshot.untouched`
 - 若某些 `exploring` 维度到访谈结束时仍无足够证据坐实，也应进入 `emergent_dimensions`，而不是假装确认
+- 不要把所有未触及维度机械整包倒入；只有那些与 dossier 当前世界轮廓仍相容、可自然涌现的维度才进入 `emergent_dimensions`
 
 4. `narrative_briefing`
 - 是一段 200-400 字左右的叙事性世界简报
@@ -120,6 +121,7 @@
 3. 不要把 dossier 中的弱猜测写成确定事实。
 4. 不要重新解释出一套和 dossier 明显不同的世界。
 5. `emergent_dimensions` 不能简单留空，除非真的所有维度都已收束为 confirmed 或 excluded。
+6. 不要把 `emergent_dimensions` 写成“剩余维度清单”或“未处理库存”。
 </hard_constraints>
 
 <quality_bar>

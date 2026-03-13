@@ -4,5 +4,8 @@
   "type": "mechanic",
   "pack": "power",
   "tags": ["gamification", "shop", "growth"],
+  "forge_mode": "full_forged",
+  "module_scope": "只定义技能商店与进化机制，不改写世界整体秩序。",
+  "rewrite_budget": "high",
   "content": "### [Plugin: The Evolution Protocol]\n**Theme:** Quantified Self / Skill Shop.\n**1. The Shop:**\n* **Mechanism:** User can spend {{ currency_name }} to buy Skills or Attributes instantly.\n* **Inventory:** Must include Reality Skills (e.g., 'Piano Mastery', 'Stock Trading') and Fantasy Skills (if applicable).\n**2. Skill Mutation:**\n* **Logic:** Merging two low-level skills creates a High-Rank 'Mutated' Skill.\n* **Example:** [Basic Fire] + [Compressed Air] = [Blue Plasma Flame]."
 }

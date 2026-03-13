@@ -1,11 +1,14 @@
 import type {
   ApiErrorPayload,
+  ReplayBundle,
   GenerateResponse,
   InterviewStepResponse,
+  RuntimeSessionCreateResponse,
   StartInterviewResponse,
 } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const RUNTIME_API_BASE_URL = import.meta.env.VITE_RUNTIME_API_BASE_URL ?? "http://127.0.0.1:8001";
 
 export class ApiError extends Error {
   payload: ApiErrorPayload;
@@ -25,7 +28,8 @@ function fallbackError(message = "Unknown error"): ApiErrorPayload {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const url = path.startsWith("http://") || path.startsWith("https://") ? path : `${API_BASE_URL}${path}`;
+  const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
@@ -83,6 +87,25 @@ export function sendInterviewMessage(input: {
 
 export function generateWorld(input: { session_id: string }): Promise<GenerateResponse> {
   return request<GenerateResponse>("/api/generate", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getReplayBundle(sessionId: string): Promise<ReplayBundle> {
+  return request<ReplayBundle>(`/api/debug/session/${encodeURIComponent(sessionId)}/replay-bundle`);
+}
+
+export function createRuntimeSession(input: {
+  system_prompt: string;
+  title: string;
+  world_summary: string;
+  tone_keywords: string[];
+  confirmed_dimensions: string[];
+  emergent_dimensions: string[];
+  player_profile?: string;
+}): Promise<RuntimeSessionCreateResponse> {
+  return request<RuntimeSessionCreateResponse>(`${RUNTIME_API_BASE_URL}/api/runtime/session`, {
     method: "POST",
     body: JSON.stringify(input),
   });

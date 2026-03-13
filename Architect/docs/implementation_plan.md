@@ -40,11 +40,17 @@
   - `POST /api/interview/message`
   - `POST /api/generate`
   - `GET /api/health`
+- Debug / Replay 观测链路已落地：
+  - `GET /api/debug/session/{session_id}`
+  - `GET /api/debug/session/{session_id}/replay-bundle`
 - Session 管理、`mirror_action` 结构化入口、`BlueprintSummary` 打包已落地
 - React + TypeScript + Vite 前端骨架已落地于 `Architect/frontend/`
+- 前端 dev-only `Replay Lab` 已落地，并支持 seed bundle / localStorage 回放
+- Module Worldization Depth 第一版已落地：core / engine / world_rules 已支持分层世界化执行
 - 后端测试当前 `23/23` 通过
 - 前端构建当前 `npm run build` 通过
 - 前端测试当前 `3/3` 通过
+- `landing_submit` 已改为不再调用 `DossierUpdater`，避免落地答案阶段额外慢调用
 
 仍未收口的点：
 
@@ -52,6 +58,23 @@
 - 访谈 repair pass 仍缺少更细的观测/告警
 - SSE 流式输出尚未接入
 - 访谈结果尚未以“两份 dossier 持续编译”的形式逐轮固化，导致问题、泡泡、Mirror 与最终蓝图仍有偏离用户真实意图的情况
+- 主链“功能可完成”，但真实链路时延稳定性未达标；当前最主要瓶颈是 `DossierUpdater`
+
+## 0.2 当前主线问题
+
+当前主线不是再堆新功能，而是把已有 vNext 主链收成“可稳定真实使用”的版本。
+
+当前优先级排序：
+
+1. `DossierUpdater` 时延与稳定性
+   - 真实链路已出现 `interview_1~5 = 40s~61s`
+   - `interview_6` 曾达到 `291s`
+   - 主因已定位为：`DossierUpdater` 单次耗时逐轮升高，并在 `stabilize` 阶段触发 timeout，随后被双层重试放大
+2. `question / bubble / mirror` 体验继续收口
+   - 访谈质量仍需持续通过真实链路检查，而不是只看 prompt 直觉
+3. Replay Lab 作为阶段测试基础设施继续沉淀
+   - 当前已具备从真实 session 固化回放样本的能力
+   - 后续所有关键体验问题应优先沉淀为可重复跳转的 replay case
 
 ## 1. 技术栈约定
 
@@ -215,9 +238,9 @@ User input
 | --- | --- | --- | --- |
 | `prompts/interviewer_system_prompt.md` | 已实现 | 当前是旧 monolith 访谈员 prompt，仍承载现行 runtime | 作为当前基线保留；vNext 不再继续扩写，后续由独立 `Interview Composer` prompt 接替 |
 | `prompts/interview_composer_system_prompt.md` | 部分实现 | 已新增 `Call 2` prompt 初版，但尚未接入运行时 | 继续从旧 monolith 提炼，直到完全承担 `InterviewComposer` 职责 |
-| `prompts/dossier_updater_system_prompt.md` | 部分实现 | 已有 prompt 初稿，且已对齐 vNext dossier schema，但尚未接入运行时 | 接入 `Call 1` 独立调用，并补充少量实现期边界约束 |
-| `prompts/bubble_composer_system_prompt.md` | 部分实现 | 已新增独立泡泡生成 prompt 初版 | 接入 `BubbleComposer`，并根据真实样本调优 `answer / advance` 边界 |
-| `prompts/compile_output_system_prompt.md` | 部分实现 | 已新增独立 compile prompt 初版 | 若 `CompileOutput` 继续由 LLM 收束生成，则接入 compile 阶段并与 `FrozenCompilePackage` 构造流程对齐 |
+| `prompts/dossier_updater_system_prompt.md` | 已实现 | 已接入独立 `Call 1`，并开始承载 bootstrap / refine / stabilize 约束 | 下一步同步 payload slimming 后的最小上下文契约，继续压首轮与 stabilize 阶段时延 |
+| `prompts/bubble_composer_system_prompt.md` | 已实现 | 已接入独立泡泡生成链路 | 继续根据真实样本调优 `answer / advance` 边界与自然度 |
+| `prompts/compile_output_system_prompt.md` | 已实现 | 已接入 compile 阶段，产出最小 5 字段 `CompileOutput` | 继续约束 emergent 失真与 compile 质量 |
 | `prompts/subagent_system_prompt.md` | 已实现 | Forge 子代理模板已接线 | 未来可增强 Pack 间一致性约束 |
 
 ### 3.3 运行时层
@@ -226,12 +249,12 @@ User input
 | --- | --- | --- | --- |
 | `interview_controller.py` | 已实现 | 4 阶段状态机；Mirror 条件为 `untouched <= 2` 或 `turn >= 6` | 参数后续可配置化 |
 | `interviewer.py` | 已实现 | 负责多轮访谈、Mirror/Landing/Complete 流转与 artifacts 输出 | 下一步拆成 `Call 1 Dossier Updater + Call 2 Interview Composer + Call 3 BubbleComposer` 管线 |
-| dossier updater runtime | 计划中 | 当前无独立 dossier 更新调用 | 新增独立低温结构化调用，更新两份 dossier |
+| dossier updater runtime | 已实现 | 已独立成 `Call 1`；当前主问题转为 payload 过重与时延稳定性不足 | 下一步改为最小必要上下文输入，并为 stabilize 失败提供快速保守复用 |
 | steering hint | 已实现 | 基于上一轮 snapshot 和最新输入长度调整 probing 顺序 | 未来如需更重策略，再单独设计 |
 | bubble generator | 部分实现 | 当前已从随机 tag 转为后端 deterministic 规则生成，但仍主要依赖题面切片与维度 phrase bank | 升级为独立 `BubbleComposer`，从当前用户心智视角生成 `bubble_candidates` |
 | `conductor.py` | 已实现 | 纯代码路由，不是二次 LLM 指挥层 | vNext 继续只吃 `CompileOutput`，不引入 dossier 消费 |
-| `forge.py` | 已实现 | 并发生成规则片段 | 下一步改为读取 `FrozenCompilePackage.compile_output + forge_context` |
-| `assembler.py` | 已实现 | `generate_json()` 提取 8 个 core 变量后组装 | 下一步改为读取 `FrozenCompilePackage.compile_output + assembler_context` |
+| `forge.py` | 已实现 | 并发生成规则片段；当前主要只对 `confirmed_dimensions` 生成 3~N 个 world-specific rules section | 下一步升级为“分层世界化”执行器：区分 `hard lock / parameterized / soft-forged / full-forged`，而不是只有 dimension packs 进 forge |
+| `assembler.py` | 已实现 | `generate_json()` 提取 8 个 core 变量后组装；当前更像 deterministic stitcher | 下一步保持“轻编译器”定位：只做格式收束、轻量去噪、章节拼装，不承担重型补锅式去重 |
 
 ### 3.4 API / Session / Packaging 层
 
@@ -239,15 +262,15 @@ User input
 | --- | --- | --- | --- |
 | `api_models.py` | 已实现 | 已定义 `BackendPhase`、请求/响应模型、`ErrorResponse` | 保持与前端 `types.ts` 同步 |
 | `session_store.py` | 已实现 | 当前仅内存态 `InMemorySessionStore` | 下一步把 `world_dossier / player_dossier / last_compiled_turn` 纳入 session state |
-| `service.py` | 已实现 | 已承接 `start / message / generate` 业务逻辑 | 下一步承接双调用编排、dossier 持久化与接口升级 |
-| `api.py` | 已实现 | FastAPI 路由、`ArchitectServiceError` 包装与 422 统一错误包装已落地 | 后续增加更细的观测与日志 |
+| `service.py` | 已实现 | 已承接 `start / message / generate` 业务逻辑，并支持 debug/replay 导出 | 下一步增加更细的调用级观测与真实链路性能对照 |
+| `api.py` | 已实现 | FastAPI 路由、`ArchitectServiceError` 包装、debug 口与 replay-bundle 端点已落地 | 后续增加更细的观测与日志 |
 | `result_packager.py` | 已实现 | 输出产品展示用 `BlueprintSummary` | 当前版本保持轻摘要，只吃 `CompileOutput` |
 
 ### 3.5 前端骨架
 
 | 组件 | 状态 | 当前事实 | 后续任务 |
 | --- | --- | --- | --- |
-| `frontend/src/App.tsx` | 已实现 | 维护 `UiPhase` 与生成流程 | 后续拆更清晰的结果/错误层 |
+| `frontend/src/App.tsx` | 已实现 | 维护 `UiPhase` 与生成流程，并承载 dev-only `Replay Lab` 入口 | 后续继续收口 replay / live 态的边界与错误提示 |
 | `MirrorView` / `LandingView` / `GenerationView` | 已实现 | 对应主流程关键节点 | 继续收口细节文案和交互动画 |
 | `CompleteView` + `PromptInspector` | 已实现 | 当前蓝图结果层由 `CompleteView` 承载，Prompt 查看器为独立组件 | 后续如需更细，可再拆内部子组件 |
 | 前端自动化测试 | 已实现 | 当前已有最小交互回归测试（Q1、Mirror、Generate Retry） | 后续继续扩充覆盖范围 |
@@ -965,6 +988,80 @@ Reject 设计原则：
 - `DossierUpdater` 需要看到足够近的演化过程，才能稳定修正理解
 - `InterviewComposer` 的任务是表达当前理解，不是重新阅读整段人生史
 
+#### Task 2B：DossierUpdater Latency Stabilization
+
+本轮决议范围：
+
+- `DossierUpdater` 是否继续默认吃通用 `recent_context(limit=6)`
+- 失败路径是否继续允许双层重试放大等待
+- 需要新增哪些运行时观测，才能基于真实链路继续调优
+
+问题证据：
+
+- 真实 fresh run 中，`interview_1~5` 耗时约 `40s~61s`
+- `interview_6` 曾达到 `291s`
+- 请求级 tracing 已定位：
+  - `InterviewComposer` 与 `BubbleComposer` 多数稳定在 `7s~9s`
+  - `DossierUpdater` 单次耗时从 `26s` 逐轮升到 `43s+`
+  - 在 `stabilize` 阶段触发 timeout 后，被“LLM client 重试 + runtime 外层重试”放大
+
+主要考量：
+
+- 优先保证真实链路可重复跑通，而不是继续容忍“功能能完成但等待不可接受”
+- 不改公开 API，不破坏 vNext 三层边界
+- 尽量不牺牲 dossier 质量，只减少重复上下文消费和灾难性等待
+
+当前结论：
+
+- `DossierUpdater` 输入改成“最小必要上下文”，不再默认直喂 `recent_context(limit=6)`
+- 新最小输入应至少包含：
+  - 上一轮 `WorldDossier`
+  - 上一轮 `PlayerDossier`
+  - 上一轮 `RoutingSnapshot` 的核心触达状态
+  - `latest_user_message`
+  - `last_assistant_prompt`
+  - `current_turn_index`
+  - `updater_mode`
+- `previous_user_message` 只作为可选补充，用于识别用户是否在修正上一轮方向
+- `routing_snapshot.untouched` 不再作为必须让模型重复理解的输入；运行时继续负责本地归一化
+- `stabilize` 阶段一旦 updater 失败，直接 `conservative reuse`
+- 不再允许靠双层重试把单轮等待放大到数十秒乃至数分钟
+- debug 观测必须补齐到调用级：
+  - `call_name`
+  - `elapsed_ms`
+  - `payload_chars`
+  - `retry_count`
+  - `fallback_used`
+
+决策原因：
+
+- twin dossier 已经承担了短期工作记忆，`DossierUpdater` 再重复吞近 3 轮完整问答，收益明显下降
+- 当前时延问题不是“所有调用都慢”，而是 `DossierUpdater` 在后段越来越接近 timeout 上限
+- `conservative reuse` 在 stabilize 阶段更符合“Mirror 前收束”的目标；保留上一轮稳定 dossier，通常比为了一次强制更新继续硬等更合理
+
+最新验证（2026-03-14，`qwen3.5-flash` 作为 `DossierUpdater` 专用模型）：
+
+- 已新增 `ARCHITECT_DOSSIER_LLM_*` 独立路由，其他调用保持原模型
+- 配置：
+  - `base_url = https://dashscope.aliyuncs.com/compatible-mode/v1`
+  - `model = qwen3.5-flash`
+  - `enable_thinking = false`
+- 真实链路样本：
+  - `session_id = 3bb422bb0ac24af3b9cbf841a1080709`
+  - `interview_1~6 = 18.35s / 17.42s / 19.32s / 19.37s / 21.11s / 17.09s`
+  - 其中 `dossier_updater = 7.46s / 7.09s / 8.54s / 8.80s / 8.15s / 9.37s`
+  - `mirror_confirm = 4.65s`
+  - `landing_submit = 18.81s`
+  - `generate = 97.85s`
+  - `total_elapsed = 233.98s`
+- 当前判断：
+  - `DossierUpdater` 时延目标已基本接近达成
+  - 访谈主链已从原先 `33s~61s` 级压到约 `17s~21s`
+  - 新的主要瓶颈已转移到 `generate` 下游，而不是 `DossierUpdater`
+  - 质量侧新增补充判断：
+    - `bootstrap` 样本里，`qwen3.5-flash` 比 `deepseek-chat` 更贴当前访谈目标，且未出现更严重的过早自信
+    - `stabilize` 样本里，`qwen3.5-flash` 仍略偏激进，已在 runtime 加入“新 confirmed 高门槛晋升”护栏
+
 #### Task 3：Bubble 策略
 
 本轮决议范围：
@@ -1140,6 +1237,133 @@ Reject 设计原则：
 - `Forge` 需要一点冻结 flavor 来让 pack 改写更像这次用户的世界，但不应在生成时再读取 live dossier
 - `Assembler` 负责全局体验层与统一气质，最有必要读取受控 dossier flavor，但这些 flavor 必须先被冻结
 - `Blueprint` 战略地位较低，当前不值得为其引入更复杂的 dossier 消费
+
+#### Task 6A：模块世界化深度（Module Worldization Depth）
+
+问题背景：
+
+- 当前成品 `SystemPrompt` 的世界专属性主要集中在少数几个 `forge` section
+- 真实链路里，最终只有 `confirmed_dimensions` 会进入 `Conductor -> Forge`
+- 直接后果是：
+  - world-specific rules 往往只有 3~N 段
+  - 其余 `core/meta/engine` 模块大多仍是“模板正文 + 少量变量替换”
+  - 整份 prompt 会出现世界化不均匀：有些 section 很像这次用户，有些 section 仍明显像通用模板
+  - 即使模块职责不冲突，最终成品也容易给人“只有一部分真正活了起来”的感觉
+
+为什么要改：
+
+- 目标不是“所有模块都 full forge”，而是“所有模块都参与世界化，只是参与深度不同”
+- 如果继续只有 `confirmed_dimensions` 深度改写：
+  - `Forge` 产物会显得孤立
+  - `Assembler` 被迫用更重的后处理去掩盖模板感
+  - 用户会感觉世界专属性集中在少数局部，而不是渗透到整个 prompt
+- 更合理的做法是：
+  - 在模块设计阶段先明确职责边界
+  - 再按模块职责决定每个模块的世界化深度
+  - 最后让 `Assembler` 只承担轻量编译职责，而不是充当重型垃圾回收站
+
+目标结论：
+
+- vNext 后续版本采用“分层世界化”而不是“单一 forge 开关”
+- 所有下游模块分为四类：
+
+1. `Hard Lock`
+- 完全不允许 LLM 改写正文
+- 只允许按固定顺序装配
+- 适用模块：
+  - `core.meta.role`
+  - `core.constitution.*`
+
+2. `Parameterized`
+- 不重写正文，只允许有限变量注入
+- 适用模块：
+  - `eng.physics`
+  - `eng.entropy`
+  - `eng.pacing`
+  - `eng.archivist`
+
+3. `Soft-Forged`
+- 保留原模板职责与大纲，但允许 LLM 在边界内做轻量世界化
+- 适用模块：
+  - `core.meta.experience`
+  - `eng.sensory`
+  - `eng.casting`
+  - `eng.subtext`
+  - `eng.veil`
+
+4. `Full-Forged`
+- 允许深度重写，直接产出世界专属规则片段
+- 适用模块：
+  - 所有命中的 `confirmed_dimensions -> primary pack`
+  - 少量确有必要的高相关 `emergent_dimensions`，但必须通过显式策略放行，不能默认全部放行
+
+怎么改：
+
+1. 数据层增加模块策略元信息
+- 给 `data/core/*.json` 与 `data/packs/*.json` 增加最小策略字段，例如：
+  - `forge_mode`: `locked | parameterized | soft_forged | full_forged`
+  - `module_scope`: 说明该模块的职责边界
+  - `rewrite_budget`: 允许改写的强度说明
+- 目标不是把策略写进 prompt 文案，而是让 `Conductor` 与 `Forge` 在代码层知道“这个模块该怎么处理”
+
+2. `Conductor` 从“只路由 confirmed packs”升级为“生成 module execution plan”
+- 当前事实：
+  - `Conductor` 只根据 `confirmed_dimensions` 产出 `ForgeTask`
+  - 因此真实产物里常常只有 3 个 forged sections
+- 下一步：
+  - `Conductor` 仍只吃 `CompileOutput`
+  - 但产出从 `ForgeManifest.tasks` 扩展为更通用的“模块执行计划”
+  - 这个计划需要同时覆盖：
+    - 固定锁定模块
+    - 参数化模块
+    - soft-forged 模块
+    - full-forged 模块
+- 仍然不允许 `Conductor` 直接消费 dossier；它只负责基于 compile 结果与模块策略决定“谁执行、以什么模式执行”
+
+3. `Forge` 升级为多模式执行器
+- 不再默认“所有进入 forge 的模块都同一种 prompt”
+- 至少拆成三种执行路径：
+  - `parameterized`: 仅抽变量，不改正文
+  - `soft_forged`: 保留模板骨架，只做局部世界化
+  - `full_forged`: 允许 pack 级深度改写
+- Prompt 约束也必须随模式变化：
+  - `soft_forged` 要求不得跨职责重写
+  - `full_forged` 允许世界专属细化，但仍不得吞并其他模块职责
+
+4. `Assembler` 保持轻编译器定位
+- `Assembler` 不应成为“职责没分清后的补锅层”
+- 但它仍必须负责：
+  - 章节顺序固定
+  - 标题层级统一
+  - 清理 JSON / code fence / 包裹噪声
+  - 轻量级重复检测与句面清洗
+- 这里的“轻量去重”是生成噪声处理，不是替代模块设计
+
+5. `emergent_dimensions` 不默认 full forge
+- 当前版本的保守策略是对的：不能因为它们出现在 `CompileOutput` 里，就一股脑全部并发改写
+- 后续允许的策略是：
+  - 先把它们列为 emergent
+  - 仅当某个 emergent dimension 对当前世界击中率和运行质感提升非常明显时，才允许升级为 soft-forged 或 full-forged
+- 也就是说，`emergent` 的默认状态仍然是“列名保留，而非自动重写”
+
+期望效果：
+
+- `SystemPrompt` 的世界专属性不再只集中在 3 个 world-specific rules section
+- `meta/engine` 层会出现稳定但不过火的世界化
+- 模块职责更清晰后：
+  - `Forge` 之间的重复表达减少
+  - `Assembler` 只需要做轻量收束
+  - 成品更像 authored system prompt，而不是多个半成品片段拼装
+- 对用户体验的具体提升：
+  - 用户会感觉“整份 prompt 都像这次世界”，而不是“只有少数模块在说这次世界”
+  - 最终运行时的叙事气质会更统一
+  - 同一世界的感官、权力结构、人物塑形和交互摩擦不再像分属不同工程师写的几份模板
+
+非目标：
+
+- 不是让所有模块都进入同等强度的 full forge
+- 不是把 `Assembler` 继续做成强干预式二次作者
+- 不是让 `Conductor` 回读 dossier 或重新承担理解层职责
 
 #### Task 7：失败恢复策略
 
@@ -1342,6 +1566,53 @@ Reject 设计原则：
 - 问题本身开始更稳定地贴合 dossier 中的理解
 - 同一用户多轮后，问题不再明显回退到早期误判
 
+### Iteration 2A：Interview Runtime Latency Stabilization
+
+目标：
+
+- 把访谈主链从“功能能跑通”收口到“真实链路可接受地跑通”
+- 优先压 `DossierUpdater` 的尾部时延与 timeout 放大问题
+
+范围：
+
+- 为 `DossierUpdater / InterviewComposer / BubbleComposer / Mirror / Generate` 增加调用级观测
+- 将 `DossierUpdater` payload 改为专用最小上下文，而不是继续直喂通用最近消息切片
+- 去掉会放大等待的外层重复重试
+- 为 `stabilize` 阶段落地 fail-fast + `conservative reuse`
+- 不改公开 API，不新增并列记忆对象，不扩 `CompileOutput`
+
+执行顺序：
+
+1. 先固化观测基线
+   - 记录真实链路的 `elapsed_ms / payload_chars / retry_count / fallback_used`
+   - 至少保留 `高墙海港城` 与 `云海修仙小镇` 两条样本
+2. 再做 payload slimming
+   - 把 `DossierUpdater` 改为最小必要上下文
+   - 保留 `InterviewComposer` 的必要 `recent_context`
+3. 最后改失败策略
+   - `bootstrap / refine` 只允许有限尝试
+   - `stabilize` 首次失败即保守复用
+
+验收标准：
+
+- 常规 interview turn 目标区间为 `8s~20s`
+- 慢轮次上限 `<25s`
+- 不允许再次出现 `45s+` 常态等待
+- 不允许再次出现 `291s` 级别阻塞
+- fresh run 至少 2 条不同世界都能完成到最终 `system_prompt`
+
+当前状态（2026-03-14）：
+
+- `部分达成`
+- 已达成：
+  - `DossierUpdater` 不再是访谈主链的主瓶颈
+  - 常规 interview turn 已压到目标区间上沿附近
+  - 第六轮不再出现 timeout 雪崩
+  - `stabilize` 阶段新增 confirmed 维度的收束护栏已落地，避免模型在 mirror 前顺手把 exploring 过早升格
+- 未达成：
+  - `generate` 下游仍明显过慢
+  - 要实现“整条链路用户感知显著变快”，还需要继续拆解 `compile_freeze / forge / assemble`
+
 ### Iteration 3：引入 BubbleComposer
 
 目标：
@@ -1386,6 +1657,40 @@ Reject 设计原则：
 - `SystemPrompt` 不再只是“题材正确”，而是更贴近 dossier 累积出的内核
 - `Blueprint` 继续保持轻摘要，但与 `Compile Output` 保持稳定一致
 
+### Iteration 4A：Module Worldization Depth（模块分层世界化）
+
+目标：
+
+- 让最终 `SystemPrompt` 的世界专属性从“少数 forge section 很像这次世界”升级为“整份 prompt 都参与这次世界化，只是深度不同”
+- 保持 vNext 三层架构不变，不把 live dossier 重新拉回 delivery 层
+
+范围：
+
+- 给 `data/core/*.json` 与 `data/packs/*.json` 补充模块策略元信息
+- 让 `Conductor` 产出 module execution plan，而不是只有 `confirmed_dimensions -> ForgeTask`
+- 为 `Forge` 增加：
+  - `parameterized`
+  - `soft_forged`
+  - `full_forged`
+  三种主要执行模式
+- `Assembler` 改为：
+  - 固定顺序拼装
+  - 轻量清洗
+  - 轻量去噪
+  不承担重型补锅式去重
+
+验收标准：
+
+- 成品 `SystemPrompt` 的世界专属性不再只集中在 3 个 section
+- `meta.experience`、关键 `eng.*` 模块能体现本次世界 flavor，而不是只剩模板口吻
+- 不同模块之间的职责边界比当前更清晰，重复表达减少
+- `Assembler` 输出不再夹带 JSON 包裹、code fence 或明显模板残渣
+
+为什么先做这一轮：
+
+- 当前问题已经不是单纯“再补几个 pack”
+- 而是下游世界化深度分配不均
+- 如果不先解决模块分层世界化，继续增加 pack 数量只会放大拼装感和 section 粘连
 ### Iteration 5：评估是否需要进一步拆分 Bubble / Mirror 生成
 
 目标：
@@ -1409,14 +1714,54 @@ Reject 设计原则：
 建议按以下顺序推进，而不是并行摊大饼：
 
 1. 落地 `Call 1: Dossier Updater` 与 twin dossier session state
-2. 升级 `Call 2`，让问题生成先消费 twin dossier
-3. 落地 `Call 3: BubbleComposer`
-4. 用 twin dossier 重做 Mirror、交付物与蓝图链路
-5. 再评估是否需要进一步拆分 Bubble / Mirror
-6. 再评估 SSE 与 Runtime 接线
-7. 单开 Runtime 计划文档并启动实现
+2. 先做 `Iteration 2A`，把 `DossierUpdater` 时延与失败策略收口到可接受区间
+3. 升级 `Call 2`，让问题生成先消费 twin dossier
+4. 落地 `Call 3: BubbleComposer`
+5. 用 twin dossier 重做 Mirror、交付物与蓝图链路
+6. 继续推进 Module Worldization Depth 的细化验收
+7. 再评估是否需要进一步拆分 Bubble / Mirror
+8. 再评估 SSE 与 Runtime 接线
+9. 单开 Runtime 计划文档并启动实现
 
-## 10. 结论
+## 10. 执行完成后的 Log 更新规则
+
+每次执行完本文件中的关键阶段任务后，必须同步更新：
+
+- `Architect/docs/logs/架构Log.md`
+- 如本轮包含真实链路回归，也同步更新对应测试记录
+
+新增日志条目时，必须遵守：
+
+1. 条目写在 `架构Log.md` 顶部时间线前部，作为最新增量
+2. 条目标题格式统一为：
+   - `## 2026-03-XX —— 访谈时延稳定化 / DossierUpdater Payload Slimming`
+   - 或与本轮任务等价的明确执行标题
+3. 必填字段统一为：
+   - `触发背景`
+   - `问题证据`
+   - `决策形成`
+   - `具体执行动作`
+   - `验证结果`
+   - `是否达成`
+   - `残余风险`
+   - `下一步`
+4. `问题证据` 必须引用真实事实：
+   - 至少包含 `session_id`
+   - 关键轮次
+   - 耗时区间
+   - 是否 timeout / fallback
+5. `是否达成` 只能写：
+   - `已达成`
+   - `部分达成`
+   - `未达成`
+6. 若只是部分完成，必须明确：
+   - 哪一步完成
+   - 哪一步未完成
+   - 当前阻塞点
+7. 不允许补写推断性结论，只能记录实际执行、实际验证、实际结果
+8. 若同时更新了真实链路测试记录，必须在同一条 log 中写明文件名与日期
+
+## 11. 结论
 
 `implementation_plan.md` 的职责不是证明项目“已经完成”，而是把开发真实位置标出来。
 

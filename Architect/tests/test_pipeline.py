@@ -14,15 +14,44 @@ class ScriptedLLMClient:
         self.json_responses = list(json_responses)
         self.generate_responses = list(generate_responses)
 
-    async def chat(self, messages, *, system_prompt=None, temperature=0.7, response_format=None) -> str:
+    async def chat(
+        self,
+        messages,
+        *,
+        system_prompt=None,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         raise AssertionError("chat() is not used in vNext pipeline tests.")
 
-    async def generate(self, *, system_prompt, user_msg, temperature=0.7, response_format=None) -> str:
+    async def generate(
+        self,
+        *,
+        system_prompt,
+        user_msg,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         if not self.generate_responses:
             raise AssertionError("No scripted generate response left.")
         return self.generate_responses.pop(0)
 
-    async def generate_json(self, prompt, *, system_prompt=None, temperature=0.2) -> dict:
+    async def generate_json(
+        self,
+        prompt,
+        *,
+        system_prompt=None,
+        temperature=0.2,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> dict:
         if not self.json_responses:
             raise AssertionError("No scripted JSON response left.")
         return self.json_responses.pop(0)
@@ -113,13 +142,18 @@ class PipelineTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             ],
             generate_responses=[
-                "把每一次寒暄都写成身份试探，把每一次施舍都写成秩序的价格。",
+                "## II. Experience Standard\n\n## 预期体验定义\n- 这座高墙都市的叙事体验必须保持冷硬、潮湿、带着资格审查般的克制。\n- 任何向上攀爬都要写出制度门槛的重量，而不是爽文式跳级。",
+                "```markdown\n### [Module V: The Vibe Anchor Protocol]\n* **Smell:** 潮湿墙根混着柴油、铁锈和咸水。\n* **Sound:** 城门齿轮缓慢咬合，远处扫描门持续低鸣。\n* **Mood Filter:** 冷硬而克制。\n```",
+                "### [Module N: The Casting Director]\n- 新人物应先呈现资格、服饰和站位，再暴露裂痕与真实需求。",
+                "### [Module A: The Subtext Interface]\n- 任何轻视都优先通过停顿、绕开称呼和视线偏移来表达。",
+                "{\"content\": \"### [Module K: The Veil]\\n- 未见过墙外权限结构的人，会把越界知识理解成挑衅或笑话。\"}",
+                "### [dim:social_friction]\n- 把每一次寒暄都写成身份试探，把每一次施舍都写成秩序的价格。",
             ],
         )
 
         interviewer = Interviewer(llm)
         opening = await interviewer.start()
-        self.assertIn("闭上眼", opening.message)
+        self.assertIn("想象一下", opening.message)
 
         mirror_step = await interviewer.process_user_message("我想要一个门阀森严、普通人很难翻身的都市世界。")
         self.assertEqual(mirror_step.phase, InterviewPhase.MIRROR)
@@ -133,13 +167,19 @@ class PipelineTestCase(unittest.IsolatedAsyncioTestCase):
         compile_output = await interviewer.compile_output()
         frozen_package = interviewer.freeze_compile_package(compile_output)
         manifest = Conductor().build_manifest(compile_output)
-        forged = await Forge(llm).execute(manifest, frozen_package.forge_context)
-        final_prompt = await Assembler(llm).assemble(forged, manifest, frozen_package.assembler_context)
+        forge_result = await Forge(llm).execute(manifest, frozen_package.forge_context)
+        final_prompt = await Assembler(llm).assemble(forge_result, manifest, frozen_package.assembler_context)
 
         self.assertIn("## V. World-Specific Rules", final_prompt)
         self.assertIn("把每一次寒暄都写成身份试探", final_prompt)
+        self.assertIn("高墙都市的叙事体验必须保持冷硬", final_prompt)
+        self.assertIn("潮湿墙根混着柴油", final_prompt)
+        self.assertIn("越界知识理解成挑衅或笑话", final_prompt)
         self.assertIn("## VII. Player Calibration", final_prompt)
         self.assertNotIn("{{ tone_primary }}", final_prompt)
+        self.assertNotIn("```", final_prompt)
+        self.assertNotIn('{"content"', final_prompt)
+        self.assertEqual(sum(1 for item in forge_result.executions if item.llm_invoked), 6)
 
 
 if __name__ == "__main__":

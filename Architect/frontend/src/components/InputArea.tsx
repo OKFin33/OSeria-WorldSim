@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface InputAreaProps {
   value: string;
   placeholder: string;
   disabled: boolean;
+  isWaiting?: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
@@ -12,6 +14,7 @@ export function InputArea({
   value,
   placeholder,
   disabled,
+  isWaiting = false,
   onChange,
   onSubmit,
 }: InputAreaProps) {
@@ -46,9 +49,13 @@ export function InputArea({
         onClick={onSubmit}
         aria-label="提交"
       >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 12L21 12M21 12L14 5M21 12L14 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        {isWaiting ? (
+          <LoadingSpinner label="正在提交" />
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 12L21 12M21 12L14 5M21 12L14 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
       </button>
     </div>
   );

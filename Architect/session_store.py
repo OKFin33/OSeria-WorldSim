@@ -24,6 +24,8 @@ class SessionRecord:
     twin_dossier: TwinDossier = field(default_factory=TwinDossier.empty)
     compile_output: CompileOutput | None = None
     frozen_compile_package: FrozenCompilePackage | None = None
+    generated_blueprint: dict[str, Any] | None = None
+    generated_system_prompt: str | None = None
     last_updated_turn: int = 0
     dossier_update_status: DossierUpdateStatus = "updated"
     transaction_status: TurnTransactionStatus = "idle"

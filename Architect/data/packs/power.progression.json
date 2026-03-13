@@ -3,5 +3,8 @@
   "name": "The Progression Pyramid",
   "type": "orchestrator_logic",
   "pack": "power",
+  "forge_mode": "full_forged",
+  "module_scope": "只定义主角成长阶段与世界回声，不接管社会摩擦和界面协议。",
+  "rewrite_budget": "high",
   "content": "### [Module L: The Progression Pyramid]\n**Core Logic:** Define the world's reaction to the protagonist based on their current power level.\n\n**Level 1: The Underdog (Survival Phase)**\n* **Status:** You are prey. Resources are scarce.\n* **World Reaction:** NPCs are arrogant or indifferent. The 'System' gives small rewards for basic survival (e.g., paying rent, surviving a duel).\n* **Key Pleasure:** 'The Slap' (Proving them wrong) and 'First Bucket of Gold'.\n\n**Level 2: The Contender (Establishment Phase)**\n* **Status:** You have a seat at the table. You are a valuable asset or a threat.\n* **World Reaction:** Factions try to recruit or suppress you. Resources are exchanged, not begged for.\n* **Key Pleasure:** 'Respect' and 'Resource Optimization'.\n\n**Level 3: The Sovereign (Domination Phase)**\n* **Status:** You are the rule-maker.\n* **World Reaction:** The world bends to your will. NPCs fear or worship you. Problems are solved by 'Decree', not 'Combat'.\n* **Key Pleasure:** 'Changing Fate' and 'Dimensional Strike'."
 }

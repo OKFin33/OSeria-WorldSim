@@ -4,12 +4,16 @@ interface GenerateFailureViewProps {
   error: ApiErrorPayload;
   onRetryGenerate: () => void;
   onRestart: () => void;
+  isReplay?: boolean;
+  restartLabel?: string;
 }
 
 export function GenerateFailureView({
   error,
   onRetryGenerate,
   onRestart,
+  isReplay = false,
+  restartLabel = "再造一个世界",
 }: GenerateFailureViewProps) {
   return (
     <>
@@ -25,11 +29,11 @@ export function GenerateFailureView({
         <p className="support-copy support-copy--detail">{error.message}</p>
       </div>
       <div className="result-actions">
-        <button className="text-button" type="button" disabled={!error.retryable} onClick={onRetryGenerate}>
+        <button className="text-button" type="button" disabled={isReplay || !error.retryable} onClick={onRetryGenerate}>
           重新生成
         </button>
         <button className="text-button" type="button" onClick={onRestart}>
-          再造一个世界
+          {restartLabel}
         </button>
       </div>
     </>

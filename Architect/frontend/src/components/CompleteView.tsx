@@ -16,8 +16,12 @@ interface CompleteViewProps {
   onClosePromptInspector: () => void;
   onCopyBlueprint: () => void;
   onCopyPrompt: () => void;
+  onLaunchRuntime: () => void;
   onRetryGenerate: () => void;
   onRestart: () => void;
+  isLaunchingRuntime: boolean;
+  isReplay?: boolean;
+  restartLabel?: string;
 }
 
 export function CompleteView({
@@ -31,8 +35,12 @@ export function CompleteView({
   onClosePromptInspector,
   onCopyBlueprint,
   onCopyPrompt,
+  onLaunchRuntime,
   onRetryGenerate,
   onRestart,
+  isLaunchingRuntime,
+  isReplay = false,
+  restartLabel = "再造一个世界",
 }: CompleteViewProps) {
   return (
     <section className="full-screen-panel complete-view">
@@ -46,16 +54,26 @@ export function CompleteView({
           onClosePromptInspector={onClosePromptInspector}
           onCopyBlueprint={onCopyBlueprint}
           onCopyPrompt={onCopyPrompt}
+          onLaunchRuntime={onLaunchRuntime}
           onRestart={onRestart}
+          isLaunchingRuntime={isLaunchingRuntime}
+          isReplay={isReplay}
+          restartLabel={restartLabel}
         />
       ) : null}
 
       {mode === "generate_failure" && error ? (
-        <GenerateFailureView error={error} onRetryGenerate={onRetryGenerate} onRestart={onRestart} />
+        <GenerateFailureView
+          error={error}
+          onRetryGenerate={onRetryGenerate}
+          onRestart={onRestart}
+          isReplay={isReplay}
+          restartLabel={restartLabel}
+        />
       ) : null}
 
       {mode === "fatal_error" && error ? (
-        <FatalErrorView error={error} onRestart={onRestart} />
+        <FatalErrorView error={error} onRestart={onRestart} restartLabel={restartLabel} />
       ) : null}
     </section>
   );

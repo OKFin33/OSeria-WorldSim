@@ -16,15 +16,44 @@ class ScriptedLLMClient:
         self.json_responses = list(json_responses)
         self.generate_responses = list(generate_responses or [])
 
-    async def chat(self, messages, *, system_prompt=None, temperature=0.7, response_format=None) -> str:
+    async def chat(
+        self,
+        messages,
+        *,
+        system_prompt=None,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         raise AssertionError("chat() is not used in vNext tests.")
 
-    async def generate(self, *, system_prompt, user_msg, temperature=0.7, response_format=None) -> str:
+    async def generate(
+        self,
+        *,
+        system_prompt,
+        user_msg,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         if not self.generate_responses:
             raise AssertionError("No scripted generate response left.")
         return self.generate_responses.pop(0)
 
-    async def generate_json(self, prompt, *, system_prompt=None, temperature=0.2) -> dict:
+    async def generate_json(
+        self,
+        prompt,
+        *,
+        system_prompt=None,
+        temperature=0.2,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> dict:
         if not self.json_responses:
             raise AssertionError("No scripted JSON response left.")
         return self.json_responses.pop(0)
@@ -115,6 +144,11 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             ],
             generate_responses=[
+                "## 预期体验定义\n- 这是一套写实、压抑、资格门槛感很重的体验标准。",
+                "### [Module V: The Vibe Anchor Protocol]\n- 空气里要有墙根返潮和铁锈味。",
+                "### [Module N: The Casting Director]\n- 人物先显露资格差，再显露真实欲望。",
+                "### [Module A: The Subtext Interface]\n- 轻视优先通过礼貌过头和停顿来表达。",
+                "### [Module K: The Veil]\n- 未被允许知道的知识会被当成僭越。",
                 "把每一次寒暄都写成身份试探。",
             ],
         )
@@ -154,7 +188,17 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         generated = await self.service.generate_world(GenerateRequest(session_id=opening.session_id))
 
         self.assertIn("把每一次寒暄都写成身份试探。", generated.system_prompt)
+        self.assertIn("资格门槛感很重的体验标准", generated.system_prompt)
         self.assertEqual(generated.blueprint.confirmed_dimensions, ["dim:social_friction"])
+        self.assertIsNotNone(record.generated_blueprint)
+        self.assertIsNotNone(record.generated_system_prompt)
+        self.assertEqual(record.debug_events[-1]["event"], "generate_world")
+        self.assertIn("module_execution", record.debug_events[-1])
+        self.assertTrue(any(item["llm_invoked"] for item in record.debug_events[-1]["module_execution"]))
+        self.assertIn("timing_breakdown", record.debug_events[-1])
+        self.assertIn("forge_elapsed_ms", record.debug_events[-1]["timing_breakdown"])
+        self.assertIn("assemble_elapsed_ms", record.debug_events[-1]["timing_breakdown"])
+        self.assertIn("assembler_debug", record.debug_events[-1]["timing_breakdown"])
 
     async def test_service_reports_missing_session(self) -> None:
         with self.assertRaises(ArchitectServiceError) as context:
@@ -229,6 +273,59 @@ class ServiceAndApiTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["twin_dossier"]["world_dossier"]["world_premise"], "这是一个门阀森严的都市世界。")
         self.assertEqual(payload["debug_events"][0]["event"], "start")
         self.assertEqual(payload["debug_events"][-1]["event"], "interview_to_mirror")
+        self.assertIn("llm_observations", payload["debug_events"][-1])
+        self.assertTrue(payload["debug_events"][-1]["llm_observations"])
+
+    async def test_replay_bundle_endpoint_requires_successful_generate(self) -> None:
+        opening = await self.service.start_interview()
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(
+                session_id=opening.session_id,
+                message="我想要一个门阀森严、普通人很难翻身的都市世界。",
+            )
+        )
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(session_id=opening.session_id, mirror_action="confirm")
+        )
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(session_id=opening.session_id, message="男，化身也是男。")
+        )
+
+        client = TestClient(create_app(self.service))
+        replay_response = client.get(f"/api/debug/session/{opening.session_id}/replay-bundle")
+
+        self.assertEqual(replay_response.status_code, 409)
+        self.assertEqual(replay_response.json()["error"]["code"], "debug_replay_not_ready")
+
+    async def test_replay_bundle_endpoint_exports_completed_session(self) -> None:
+        opening = await self.service.start_interview()
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(
+                session_id=opening.session_id,
+                message="我想要一个门阀森严、普通人很难翻身的都市世界。",
+            )
+        )
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(session_id=opening.session_id, mirror_action="confirm")
+        )
+        await self.service.submit_interview_message(
+            InterviewMessageRequest(session_id=opening.session_id, message="男，化身也是男。")
+        )
+        await self.service.generate_world(GenerateRequest(session_id=opening.session_id))
+
+        client = TestClient(create_app(self.service))
+        replay_response = client.get(f"/api/debug/session/{opening.session_id}/replay-bundle")
+
+        self.assertEqual(replay_response.status_code, 200)
+        payload = replay_response.json()
+        self.assertEqual(payload["source_session_id"], opening.session_id)
+        self.assertEqual(
+            [snapshot["ui_phase"] for snapshot in payload["snapshots"]],
+            ["q1", "mirror", "landing", "complete"],
+        )
+        self.assertEqual(payload["snapshots"][0]["frontstage"]["kind"], "start")
+        self.assertEqual(payload["snapshots"][-1]["frontstage"]["kind"], "generate")
+        self.assertIn("twin_dossier", payload["snapshots"][-1]["backstage"])
 
 
 class AsyncSafeConductor:

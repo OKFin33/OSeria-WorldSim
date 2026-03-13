@@ -1,46 +1,37 @@
-import { useEffect, useState } from "react";
-
 interface CurrentSceneProps {
   message: string;
+  question: string;
   isWaiting: boolean;
+  waitingPhrase?: string | null;
 }
 
-export function CurrentScene({ message, isWaiting }: CurrentSceneProps) {
-  const [displayedText, setDisplayedText] = useState("");
-  const [opacity, setOpacity] = useState(1);
+export function CurrentScene({ message, question, isWaiting, waitingPhrase = null }: CurrentSceneProps) {
+  const paragraphs = message.split("\n").filter((p) => p.trim() !== "");
+  const contentKey = `${message}::${question}`;
 
-  useEffect(() => {
-    if (!message) return;
-
-    setOpacity(0);
-    const fadeTimer = window.setTimeout(() => {
-      setDisplayedText("");
-      setOpacity(1);
-
-      let currentIndex = 0;
-      const typeInterval = window.setInterval(() => {
-        setDisplayedText(message.slice(0, currentIndex + 1));
-        currentIndex++;
-        if (currentIndex >= message.length) {
-          window.clearInterval(typeInterval);
-        }
-      }, 40);
-
-      return () => window.clearInterval(typeInterval);
-    }, 200);
-
-    return () => window.clearTimeout(fadeTimer);
-  }, [message]);
-
-  const paragraphs = displayedText.split("\n").filter((p) => p.trim() !== "");
   return (
-    <div
-      className={`scene-card${isWaiting ? " scene-card--waiting" : ""}`}
-      style={{ opacity, transition: "opacity 0.2s ease-in-out" }}
-    >
-      {paragraphs.map((p, i) => (
-        <p key={i}>{p}</p>
-      ))}
+    <div className={`scene-card${isWaiting ? " scene-card--waiting" : ""}`}>
+      {(message || question) && (
+        <div
+          key={contentKey}
+          className={`scene-card__content${isWaiting ? " scene-card__content--hidden" : ""}`}
+          aria-hidden={isWaiting}
+        >
+          <div className="scene-card__echo">
+            {paragraphs.map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
+          {question ? <p className="scene-card__question">{question}</p> : null}
+        </div>
+      )}
+      {isWaiting && waitingPhrase ? (
+        <div className="scene-card__waiting" aria-live="polite">
+          <p className="scene-card__waiting-copy waiting-copy" key={waitingPhrase}>
+            <span className="waiting-copy__inner">{waitingPhrase}</span>
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

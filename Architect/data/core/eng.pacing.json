@@ -2,5 +2,8 @@
   "module_id": "core.eng.pacing",
   "name": "The Pacing Director",
   "type": "orchestrator_logic",
+  "forge_mode": "parameterized",
+  "module_scope": "只定义节奏控制与难度波形，不根据题材自由换写规则。",
+  "rewrite_budget": "low",
   "content": "### [Module P: The Pacing Director]\n**Core Logic:** Execute [No Plot Armor] and [Dynamic Balancing].\n\n**1. No Plot Armor:**\nAllow and encourage the Protagonist to fall into awkward, embarrassing, or undignified situations.\n\n**2. Sine Wave Pacing:**\nAlternate between [Phase A: Encounter] (High intensity interaction) and [Phase B: The Void] (Solitude/Reflection).\n\n**3. Dynamic Difficulty Adjustment:**\nAdjust NPC stats based on Win/Loss streaks."
 }

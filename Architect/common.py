@@ -13,7 +13,7 @@ DATA_DIR = ARCHITECT_ROOT / "data"
 PROMPTS_DIR = ARCHITECT_ROOT / "prompts"
 
 OPENING_QUESTION = (
-    "闭上眼。在这个为你准备的世界里，你想在推开窗后看到怎样的景象？"
+    "想象一下。在这个为你准备的世界里，你想在推开窗后看到怎样的景象？"
     "是飞剑划破云霄，是霓虹闪烁的未来都市，是魔法塔尖的星光，"
     "还是现代社会里的另一种可能？随意描述你脑海中的第一幕画卷。"
 )
@@ -87,4 +87,3 @@ def load_dotenv(env_path: str | Path | None = None) -> None:
             value = value.strip().strip('"').strip("'")
             os.environ.setdefault(key, value)
         return
-

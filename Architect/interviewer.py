@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any
 
 from .common import OPENING_QUESTION, PROMPTS_DIR, dump_json, load_text
@@ -20,6 +21,8 @@ from .interview_controller import InterviewController, InterviewPhase
 from .llm_client import LLMClientProtocol
 
 MAX_BUBBLES = 3
+DOSSIER_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
+DOSSIER_STABILIZE_TIMEOUT_SECONDS = 20.0
 
 
 @dataclass
@@ -36,8 +39,10 @@ class Interviewer:
         llm_client: LLMClientProtocol,
         *,
         controller: InterviewController | None = None,
+        dossier_llm_client: LLMClientProtocol | None = None,
     ) -> None:
         self.llm = llm_client
+        self.dossier_llm = dossier_llm_client or llm_client
         self.controller = controller or InterviewController()
         self.dimension_registry = InterviewDimensionRegistry.load()
         self.messages: list[dict[str, str]] = []
@@ -51,6 +56,7 @@ class Interviewer:
         self.interview_composer_prompt = load_text(PROMPTS_DIR / "interview_composer_system_prompt.md")
         self.bubble_composer_prompt = load_text(PROMPTS_DIR / "bubble_composer_system_prompt.md")
         self.compile_output_prompt = load_text(PROMPTS_DIR / "compile_output_system_prompt.md")
+        self._llm_observations: list[dict[str, Any]] = []
 
     async def start(self) -> InterviewStepResult:
         if not self.started:
@@ -86,7 +92,9 @@ class Interviewer:
         raise RuntimeError(f"Unsupported interview phase: {self.controller.phase}")
 
     async def compile_output(self) -> CompileOutput:
+        self._begin_llm_observations()
         payload = await self._generate_json(
+            call_name="compile_output",
             system_prompt=self.compile_output_prompt,
             user_payload={
                 "world_dossier": self.twin_dossier.world_dossier.to_dict(),
@@ -96,7 +104,7 @@ class Interviewer:
             },
             temperature=0.2,
         )
-        return CompileOutput.from_dict(payload)
+        return self._normalize_compile_output(CompileOutput.from_dict(payload))
 
     def freeze_compile_package(self, compile_output: CompileOutput) -> FrozenCompilePackage:
         return FrozenCompilePackage(
@@ -109,6 +117,7 @@ class Interviewer:
         if current_phase != "interviewing":
             raise RuntimeError("Only interviewing turns can trigger dossier updates.")
 
+        self._begin_llm_observations()
         dossier_before = self.twin_dossier.to_dict()
         user_message = self._latest_user_message()
         update_status = await self._run_dossier_updater()
@@ -133,6 +142,8 @@ class Interviewer:
                     "dossier_update_status": update_status,
                     "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
                     "mirror_text": mirror_text,
+                    "fallback_used": update_status == "update_skipped",
+                    "llm_observations": self._consume_llm_observations(),
                 },
             )
 
@@ -162,10 +173,13 @@ class Interviewer:
                     candidate.to_dict() for candidate in question_result["bubble_candidates"]
                 ],
                 "follow_up_signal": self.follow_up_signal,
+                "fallback_used": update_status == "update_skipped",
+                "llm_observations": self._consume_llm_observations(),
             },
         )
 
     async def _handle_mirror_feedback(self, user_message: str) -> InterviewStepResult:
+        self._begin_llm_observations()
         disposition = self._classify_mirror_feedback(user_message)
         if disposition == "confirm":
             next_phase = self.controller.process_turn({})
@@ -183,6 +197,8 @@ class Interviewer:
                     "landing_text": landing,
                     "routing_snapshot": self.twin_dossier.routing_snapshot.to_dict(),
                     "dossier_update_status": self.dossier_update_status,
+                    "fallback_used": False,
+                    "llm_observations": self._consume_llm_observations(),
                 },
             )
 
@@ -216,13 +232,16 @@ class Interviewer:
                     candidate.to_dict() for candidate in question_result["bubble_candidates"]
                 ],
                 "follow_up_signal": "mirror_rejected",
+                "fallback_used": False,
+                "llm_observations": self._consume_llm_observations(),
             },
         )
 
     async def _handle_landing_submission(self) -> InterviewStepResult:
         dossier_before = self.twin_dossier.to_dict()
         user_message = self._latest_user_message()
-        await self._run_dossier_updater()
+        # Landing only collects finishing metadata; dossier should already be stabilized before mirror.
+        self.dossier_update_status = "update_skipped"
         self.controller.process_turn({})
         return InterviewStepResult(
             phase=InterviewPhase.COMPLETE,
@@ -242,35 +261,35 @@ class Interviewer:
     async def _run_dossier_updater(self) -> DossierUpdateStatus:
         previous = self.twin_dossier
         updater_mode = self._dossier_update_mode()
-        payload = {
-            "previous_world_dossier": previous.world_dossier.to_dict(),
-            "previous_player_dossier": previous.player_dossier.to_dict(),
-            "previous_routing_snapshot": previous.routing_snapshot.to_dict(),
-            "recent_context": self._recent_context(limit=6),
-            "latest_user_message": self._latest_user_message(),
-            "current_phase": self.controller.phase.value,
-            "current_turn_index": self.controller.turn + 1,
-            "updater_mode": updater_mode,
-        }
+        payload = self._build_dossier_updater_payload(previous)
+        can_reuse_previous = self._can_conservatively_reuse(previous)
+        max_retries = 1 if updater_mode == "bootstrap" and not can_reuse_previous else 0
+        timeout = (
+            DOSSIER_BOOTSTRAP_TIMEOUT_SECONDS
+            if updater_mode == "bootstrap"
+            else DOSSIER_STABILIZE_TIMEOUT_SECONDS
+        )
 
-        last_error: Exception | None = None
-        for _ in range(2):
-            try:
-                updated = await self._generate_json(
-                    system_prompt=self.dossier_updater_prompt,
-                    user_payload=payload,
-                    temperature=0.15,
-                )
-                self.twin_dossier = self._normalize_twin_dossier(
-                    TwinDossier.from_dict(updated),
-                    updater_mode=updater_mode,
-                )
-                self.dossier_update_status = "updated"
-                return self.dossier_update_status
-            except Exception as exc:
-                last_error = exc
+        try:
+            updated = await self._generate_json(
+                call_name="dossier_updater",
+                system_prompt=self.dossier_updater_prompt,
+                user_payload=payload,
+                temperature=0.15,
+                timeout=timeout,
+                max_retries=max_retries,
+            )
+            self.twin_dossier = self._normalize_twin_dossier(
+                TwinDossier.from_dict(updated),
+                updater_mode=updater_mode,
+                previous=previous,
+            )
+            self.dossier_update_status = "updated"
+            return self.dossier_update_status
+        except Exception as exc:
+            last_error = exc
 
-        if self._can_conservatively_reuse(previous):
+        if can_reuse_previous:
             self.twin_dossier = previous
             self.dossier_update_status = "update_skipped"
             return self.dossier_update_status
@@ -280,6 +299,7 @@ class Interviewer:
 
     async def _compose_interview_response(self) -> dict[str, Any]:
         payload = await self._generate_json(
+            call_name="interview_composer_interview",
             system_prompt=self.interview_composer_prompt,
             user_payload={
                 "world_dossier": self.twin_dossier.world_dossier.to_dict(),
@@ -297,7 +317,7 @@ class Interviewer:
         if not visible_text or not question:
             raise ValueError("InterviewComposer did not return visible_text/question.")
         bubbles = await self._compose_bubbles(question=question, visible_text=visible_text)
-        self.messages.append({"role": "assistant", "content": visible_text})
+        self.messages.append({"role": "assistant", "content": self._compose_assistant_context_entry(visible_text, question)})
         self.follow_up_signal = ""
         return {
             "visible_text": visible_text,
@@ -307,6 +327,7 @@ class Interviewer:
 
     async def _compose_mirror(self) -> str:
         payload = await self._generate_json(
+            call_name="interview_composer_mirror",
             system_prompt=self.interview_composer_prompt,
             user_payload={
                 "world_dossier": self.twin_dossier.world_dossier.to_dict(),
@@ -326,6 +347,7 @@ class Interviewer:
 
     async def _compose_landing(self) -> str:
         payload = await self._generate_json(
+            call_name="interview_composer_landing",
             system_prompt=self.interview_composer_prompt,
             user_payload={
                 "world_dossier": self.twin_dossier.world_dossier.to_dict(),
@@ -339,13 +361,21 @@ class Interviewer:
             temperature=0.45,
         )
         text = str(payload.get("visible_text") or payload.get("question") or "").strip()
-        if not text:
-            raise ValueError("InterviewComposer did not return landing text.")
+        latest_assistant = self.messages[-1]["content"].strip() if self.messages else ""
+        mode = str(payload.get("mode", "")).strip()
+        if (
+            not text
+            or mode != "landing"
+            or text == latest_assistant
+            or len(text) > 80
+        ):
+            text = self._fallback_landing_text()
         return text
 
     async def _compose_bubbles(self, *, question: str, visible_text: str) -> list[BubbleCandidate]:
         try:
             payload = await self._generate_json(
+                call_name="bubble_composer",
                 system_prompt=self.bubble_composer_prompt,
                 user_payload={
                     "player_dossier": self.twin_dossier.player_dossier.to_dict(),
@@ -374,12 +404,59 @@ class Interviewer:
                 break
         return candidates
 
-    async def _generate_json(self, *, system_prompt: str, user_payload: dict[str, Any], temperature: float) -> dict[str, Any]:
-        return await self.llm.generate_json(
-            dump_json(user_payload),
-            system_prompt=system_prompt,
-            temperature=temperature,
+    async def _generate_json(
+        self,
+        *,
+        call_name: str,
+        system_prompt: str,
+        user_payload: dict[str, Any],
+        temperature: float,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> dict[str, Any]:
+        payload_text = dump_json(user_payload)
+        retry_count = 0
+
+        def observer(*, attempt: int, error: Exception) -> None:
+            nonlocal retry_count
+            retry_count = max(retry_count, attempt)
+
+        started = time.perf_counter()
+        client = self.dossier_llm if call_name == "dossier_updater" else self.llm
+        try:
+            result = await client.generate_json(
+                payload_text,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                timeout=timeout,
+                max_retries=max_retries,
+                observer=observer,
+            )
+        except Exception as exc:
+            self._llm_observations.append(
+                {
+                    "call_name": call_name,
+                    "payload_chars": len(payload_text),
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                    "retry_count": retry_count,
+                    "fallback_used": False,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
+            raise
+
+        self._llm_observations.append(
+            {
+                "call_name": call_name,
+                "payload_chars": len(payload_text),
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                "retry_count": retry_count,
+                "fallback_used": False,
+                "status": "ok",
+            }
         )
+        return result
 
     def _compose_dossier_updater_prompt(self) -> str:
         dimension_menu = self.dimension_registry.render_prompt_menu()
@@ -408,6 +485,37 @@ class Interviewer:
             "follow_up_signal": follow_up_signal if follow_up_signal == "mirror_rejected" else "",
         }
 
+    def _compose_assistant_context_entry(self, visible_text: str, question: str) -> str:
+        parts = [segment.strip() for segment in (visible_text, question) if segment and segment.strip()]
+        return "\n".join(parts)
+
+    def _begin_llm_observations(self) -> None:
+        self._llm_observations = []
+
+    def _consume_llm_observations(self) -> list[dict[str, Any]]:
+        observations = [dict(item) for item in self._llm_observations]
+        self._llm_observations = []
+        return observations
+
+    def _build_dossier_updater_payload(self, previous: TwinDossier) -> dict[str, Any]:
+        routing_snapshot = previous.routing_snapshot.to_dict()
+        routing_snapshot.pop("untouched", None)
+
+        payload = {
+            "previous_world_dossier": previous.world_dossier.to_dict(),
+            "previous_player_dossier": previous.player_dossier.to_dict(),
+            "previous_routing_snapshot": routing_snapshot,
+            "latest_user_message": self._latest_user_message(),
+            "last_assistant_prompt": self._last_assistant_prompt(),
+            "current_phase": self.controller.phase.value,
+            "current_turn_index": self.controller.turn + 1,
+            "updater_mode": self._dossier_update_mode(),
+        }
+        previous_user_message = self._previous_user_message()
+        if previous_user_message:
+            payload["previous_user_message"] = previous_user_message
+        return payload
+
     def _recent_context(self, *, limit: int) -> list[dict[str, str]]:
         if limit <= 0:
             return []
@@ -417,6 +525,24 @@ class Interviewer:
         for message in reversed(self.messages):
             if message.get("role") == "user":
                 return str(message.get("content", "")).strip()
+        return ""
+
+    def _last_assistant_prompt(self) -> str:
+        for message in reversed(self.messages[:-1]):
+            if message.get("role") == "assistant":
+                return str(message.get("content", "")).strip()
+        return ""
+
+    def _previous_user_message(self) -> str:
+        seen_latest = False
+        for message in reversed(self.messages):
+            if message.get("role") != "user":
+                continue
+            content = str(message.get("content", "")).strip()
+            if not seen_latest:
+                seen_latest = True
+                continue
+            return content
         return ""
 
     def _can_conservatively_reuse(self, dossier: TwinDossier) -> bool:
@@ -431,10 +557,18 @@ class Interviewer:
             ]
         )
 
-    def _normalize_twin_dossier(self, dossier: TwinDossier, *, updater_mode: str) -> TwinDossier:
+    def _normalize_twin_dossier(
+        self,
+        dossier: TwinDossier,
+        *,
+        updater_mode: str,
+        previous: TwinDossier | None = None,
+    ) -> TwinDossier:
         dossier.routing_snapshot = self._normalize_routing_snapshot(dossier.routing_snapshot)
         if updater_mode == "bootstrap":
             dossier = self._apply_bootstrap_guardrails(dossier)
+        elif updater_mode == "stabilize":
+            dossier = self._apply_stabilize_guardrails(dossier, previous=previous)
         return dossier
 
     def _dossier_update_mode(self) -> str:
@@ -450,6 +584,21 @@ class Interviewer:
 
         world = dossier.world_dossier
         player = dossier.player_dossier
+        snapshot = dossier.routing_snapshot
+
+        volatile_bootstrap_dims = {
+            "dim:power_progression",
+            "dim:combat_rules",
+            "dim:ability_loot",
+            "dim:skill_shop",
+            "dim:command_friction",
+        }
+        demoted = [
+            item for item in snapshot.confirmed if item in volatile_bootstrap_dims and item not in snapshot.excluded
+        ]
+        if demoted:
+            snapshot.confirmed = [item for item in snapshot.confirmed if item not in demoted]
+            snapshot.exploring = list(dict.fromkeys([*demoted, *snapshot.exploring]))
 
         if world.world_premise:
             world.world_premise = self._soften_bootstrap_world_premise(world.world_premise)
@@ -462,6 +611,87 @@ class Interviewer:
         ):
             player.emotional_seed = ""
         return dossier
+
+    def _apply_stabilize_guardrails(
+        self,
+        dossier: TwinDossier,
+        *,
+        previous: TwinDossier | None,
+    ) -> TwinDossier:
+        snapshot = dossier.routing_snapshot
+        previous_confirmed = set(previous.routing_snapshot.confirmed if previous else [])
+        historical_support = self._historical_routing_support_counts()
+
+        retained_confirmed: list[str] = []
+        demoted: list[str] = []
+        for item in snapshot.confirmed:
+            if item in previous_confirmed or historical_support.get(item, 0) >= 4:
+                retained_confirmed.append(item)
+            else:
+                demoted.append(item)
+
+        snapshot.confirmed = list(dict.fromkeys(retained_confirmed))
+        snapshot.exploring = [
+            item
+            for item in dict.fromkeys([*demoted, *snapshot.exploring])
+            if item not in snapshot.confirmed and item not in snapshot.excluded
+        ]
+        snapshot.untouched = [item for item in snapshot.untouched if item not in snapshot.confirmed]
+
+        if demoted:
+            dossier.change_log.newly_confirmed = [
+                item for item in dossier.change_log.newly_confirmed if item not in demoted
+            ]
+        return dossier
+
+    def _routing_support_counts(self, current_snapshot) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for snapshot in [*self.controller.history, current_snapshot.to_dict()]:
+            for item in snapshot.get("confirmed", []):
+                counts[item] = counts.get(item, 0) + 2
+            for item in snapshot.get("exploring", []):
+                counts[item] = counts.get(item, 0) + 1
+        return counts
+
+    def _historical_routing_support_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for snapshot in self.controller.history:
+            for item in snapshot.get("confirmed", []):
+                counts[item] = counts.get(item, 0) + 2
+            for item in snapshot.get("exploring", []):
+                counts[item] = counts.get(item, 0) + 1
+        return counts
+
+    def _normalize_compile_output(self, compile_output: CompileOutput) -> CompileOutput:
+        snapshot = self.twin_dossier.routing_snapshot
+        support_counts = self._routing_support_counts(snapshot)
+
+        confirmed = list(dict.fromkeys([*compile_output.confirmed_dimensions, *snapshot.confirmed]))
+        if not confirmed:
+            promoted = [
+                item
+                for item in snapshot.exploring
+                if support_counts.get(item, 0) >= 2 and item not in snapshot.excluded
+            ]
+            confirmed = promoted[:2]
+
+        excluded = [
+            item
+            for item in dict.fromkeys([*compile_output.excluded_dimensions, *snapshot.excluded])
+            if item not in confirmed
+        ]
+
+        allowed_emergent = [item for item in [*snapshot.untouched, *snapshot.exploring] if item not in confirmed and item not in excluded]
+        emergent_seed = [item for item in compile_output.emergent_dimensions if item in allowed_emergent]
+        emergent = list(dict.fromkeys([*emergent_seed, *allowed_emergent]))[:4]
+
+        compile_output.confirmed_dimensions = confirmed
+        compile_output.excluded_dimensions = excluded
+        compile_output.emergent_dimensions = emergent
+        return compile_output
+
+    def _fallback_landing_text(self) -> str:
+        return "最后两个问题。你本人的性别是什么？你想进入这个世界时，化身希望是什么性别？"
 
     def _soften_bootstrap_world_premise(self, text: str) -> str:
         softened = text.strip()

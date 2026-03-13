@@ -11,13 +11,42 @@ class FailingUpdaterLLMClient:
         self.fail_count = fail_count
         self.json_responses = list(json_responses)
 
-    async def chat(self, messages, *, system_prompt=None, temperature=0.7, response_format=None) -> str:
+    async def chat(
+        self,
+        messages,
+        *,
+        system_prompt=None,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         raise AssertionError("chat() is not used in vNext interviewer tests.")
 
-    async def generate(self, *, system_prompt, user_msg, temperature=0.7, response_format=None) -> str:
+    async def generate(
+        self,
+        *,
+        system_prompt,
+        user_msg,
+        temperature=0.7,
+        response_format=None,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> str:
         raise AssertionError("generate() is not used in this recovery test.")
 
-    async def generate_json(self, prompt, *, system_prompt=None, temperature=0.2) -> dict:
+    async def generate_json(
+        self,
+        prompt,
+        *,
+        system_prompt=None,
+        temperature=0.2,
+        timeout=None,
+        max_retries=None,
+        observer=None,
+    ) -> dict:
         if self.fail_count > 0 and system_prompt and "静默档案官" in system_prompt:
             self.fail_count -= 1
             raise RuntimeError("upstream timeout")

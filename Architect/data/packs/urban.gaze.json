@@ -3,5 +3,8 @@
   "name": "Directive: High-Light Rendering",
   "type": "narrative_logic",
   "pack": "urban",
+  "forge_mode": "full_forged",
+  "module_scope": "只定义高价值人物或亲密时刻的镜头聚焦，不概述整体世界结构。",
+  "rewrite_budget": "high",
   "content": "### [Directive: High-Light Rendering]\n**Trigger:** High-value romantic interest appearance or intimate moments.\n**Protocol:** Pause plot advancement for a 200-word sensory focus.\n* **Visual:** Fabric tension, silhouette, lighting interaction with skin/material.\n* **Dynamic:** Micro-movements (nervous ticks, confident adjustments, pupil dilation).\n* **Atmosphere:** Scent radius, body heat radiation, the 'weight' of their gaze."
 }

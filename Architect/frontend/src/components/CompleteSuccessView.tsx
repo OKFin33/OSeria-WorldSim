@@ -10,7 +10,11 @@ interface CompleteSuccessViewProps {
   onClosePromptInspector: () => void;
   onCopyBlueprint: () => void;
   onCopyPrompt: () => void;
+  onLaunchRuntime: () => void;
   onRestart: () => void;
+  isLaunchingRuntime: boolean;
+  isReplay?: boolean;
+  restartLabel?: string;
 }
 
 export function CompleteSuccessView({
@@ -22,12 +26,16 @@ export function CompleteSuccessView({
   onClosePromptInspector,
   onCopyBlueprint,
   onCopyPrompt,
+  onLaunchRuntime,
   onRestart,
+  isLaunchingRuntime,
+  isReplay = false,
+  restartLabel = "再造一个世界",
 }: CompleteSuccessViewProps) {
   return (
     <>
       <div className="complete-view__hero">
-        <p className="complete-view__eyebrow">结果</p>
+        <p className="complete-view__eyebrow">新世界</p>
         <h1>{blueprint.title}</h1>
       </div>
 
@@ -38,7 +46,7 @@ export function CompleteSuccessView({
         </article>
         <article className="blueprint-grid">
           <div className="blueprint-card">
-            <h3>主角起点</h3>
+            <h3>世界入口</h3>
             <p>{blueprint.protagonist_hook}</p>
           </div>
           <div className="blueprint-card">
@@ -56,35 +64,12 @@ export function CompleteSuccessView({
             ))}
           </div>
         </article>
-        <article className="blueprint-grid">
-          <div className="blueprint-card">
-            <h3>核心维度</h3>
-            <div className="chip-row">
-              {blueprint.confirmed_dimensions.map((item) => (
-                <span className="chip" key={item}>
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="blueprint-card">
-            <h3>留白维度</h3>
-            <div className="chip-row">
-              {blueprint.emergent_dimensions.map((item) => (
-                <span className="chip chip--muted" key={item}>
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        </article>
-        <article className="blueprint-card">
-          <h3>玩家侧写</h3>
-          <p>{blueprint.player_profile}</p>
-        </article>
       </div>
 
       <div className="result-actions">
+        <button className="text-button" type="button" disabled={!systemPrompt || isLaunchingRuntime} onClick={onLaunchRuntime}>
+          {isLaunchingRuntime ? "启动 Runtime 中..." : "进入 Runtime"}
+        </button>
         <button className="text-button" type="button" disabled={!systemPrompt} onClick={onOpenPromptInspector}>
           查看完整 Prompt
         </button>
@@ -92,7 +77,7 @@ export function CompleteSuccessView({
           复制蓝图摘要
         </button>
         <button className="text-button" type="button" onClick={onRestart}>
-          再造一个世界
+          {restartLabel}
         </button>
       </div>
 
