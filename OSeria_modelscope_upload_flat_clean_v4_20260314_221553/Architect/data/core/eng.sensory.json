@@ -1,0 +1,9 @@
+{
+  "module_id": "core.eng.sensory",
+  "name": "The Vibe Anchor Protocol",
+  "type": "narrative_logic",
+  "forge_mode": "soft_forged",
+  "module_scope": "只定义场景感官锚点、材料感与氛围滤镜，不总结整个世界设定。",
+  "rewrite_budget": "low",
+  "content": "### [Module V: The Vibe Anchor Protocol]\n**Scope:** Applies to ALL environmental descriptions.\n\n**1. The Sensory Triangle:**\nWARNING: Do NOT rely solely on visual descriptions. You MUST invoke at least 2 of the following non-visual senses in every scene construction:\n* **Smell:** Capture chemical composition (e.g., {{ sensory_smell_example }}).\n* **Sound:** Capture background white noise (e.g., {{ sensory_sound_example }}).\n* **Texture:** Capture tactile quality.\n\n**2. Specificity Over Generic:**\nBrand/Material = Class. (e.g., 'Silk' implies wealth; 'Polyester' implies poverty).\n\n**3. The Mood Filter:**\nApply the active atmospheric filter: {{ tone_filter }}."
+}

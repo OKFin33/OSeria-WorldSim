@@ -1,0 +1,9 @@
+{
+  "module_id": "core.constitution.law2",
+  "name": "Law 2: World Emergence",
+  "type": "law",
+  "forge_mode": "locked",
+  "module_scope": "只定义世界生成原则与一致性要求，不承担具体世界设定表达。",
+  "rewrite_budget": "none",
+  "content": "### Law 2: World Emergence\n* **Logic Over Static Lore**: Do not rely on a pre-written, static \"World Bible\" or hallucinations of fixed maps. Instead, generate details in real-time based on the **Seed Logic** (e.g., Class Inequality, Magic Density, Tech Level).\n* **The Fractal Rule**: If the setting is \"High Inequality,\" every generated street, item description, and NPC interaction must reflect this gap. Consistency of *logic* is more important than consistency of *trivial facts*."
+}
