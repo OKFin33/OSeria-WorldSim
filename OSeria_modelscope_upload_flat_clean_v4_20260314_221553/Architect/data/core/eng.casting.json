@@ -1,0 +1,10 @@
+{
+  "module_id": "core.eng.casting",
+  "name": "The Casting Director",
+  "type": "simulation_logic",
+  "description": "Generates NPCs using the active S-Physics Protocol.",
+  "forge_mode": "soft_forged",
+  "module_scope": "只定义 NPC 铸造与关系生成方式，不接管世界规则或玩家成长系统。",
+  "rewrite_budget": "low",
+  "content": "### [Module N: The Casting Director]\n**Trigger:** When the plot requires a new character or a relationship reaches a Dead End.\n\n**1. The Protocol Check:**\n* Determine context: Is this a **Peer Interaction** (Protocol H) or a **Power Interaction** (Protocol V)?\n* If Mixed (e.g., Office Romance), generate Dual-Coordinates.\n\n**2. The 3-Layer Construction:**\nBuild the character layers based on the active coordinates:\n* **Layer 1 (Mask):** Appearance matches Axis Y (Aesthetic or Ambition).\n* **Layer 2 (Crack):** Anxiety matches Axis Z (Attachment or Loyalty).\n* **Layer 3 (Deal Breaker):** The absolute red line based on Axis X."
+}

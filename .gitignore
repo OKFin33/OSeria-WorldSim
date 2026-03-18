@@ -1,8 +1,26 @@
-node_modules/
-.env
+# macOS
 .DS_Store
-*.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+
+# Frontend
+node_modules/
 dist/
-build/
-.vscode/
-.idea/
+.vite/
+*.tsbuildinfo
+
+# Runtime local state
+.runtime_sessions/
+Runtime/.runtime-backend.log
+Runtime/frontend/vite.config.js
+Runtime/frontend/vite.config.d.ts

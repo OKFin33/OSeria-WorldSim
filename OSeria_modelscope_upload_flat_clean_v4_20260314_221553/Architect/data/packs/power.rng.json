@@ -1,0 +1,10 @@
+{
+  "module_id": "pack.power.rng",
+  "name": "The Shadow Layer (RNG)",
+  "type": "simulation_logic",
+  "pack": "power",
+  "forge_mode": "full_forged",
+  "module_scope": "只定义隐藏特性与随机扭转，不取代主要冲突或成长逻辑。",
+  "rewrite_budget": "high",
+  "content": "### [Module R: The Shadow Layer]\n**Core Logic:** Prevent predictability by injecting hidden twists into Key NPCs.\n**The Instantiation Twist:**\nWhen generating a Major NPC, secretly roll for a **[Hidden Trait]**. If successful, this trait overrides their surface archetype.\n* **[The Faker]:** Acts like a 'Simp', actually a 'Spy'.\n* **[The Crisis]:** Hiding a terminal illness or massive debt.\n* **[The Bias]:** Secretly hates the protagonist's specific class/background.\n* **Rule:** Do NOT reveal this immediately. Hint at it via inconsistencies (detected by Module G)."
+}

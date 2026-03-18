@@ -1,0 +1,48 @@
+{
+  "$schema": "https://modelscope.cn/api/v1/studios/deploy_schema.json",
+  "sdk_type": "docker",
+  "resource_configuration": "platform/2v-cpu-16g-mem",
+  "port": 7860,
+  "environment_variables": [
+    {
+      "name": "ARCHITECT_LLM_API_KEY",
+      "value": "ms-66bb4b4b-2ddb-4906-9579-c6159234e9a2"
+    },
+    {
+      "name": "ARCHITECT_LLM_BASE_URL",
+      "value": "https://api-inference.modelscope.cn/v1"
+    },
+    {
+      "name": "ARCHITECT_LLM_MODEL",
+      "value": "deepseek-ai/DeepSeek-V3.2"
+    },
+    {
+      "name": "ARCHITECT_DOSSIER_LLM_API_KEY",
+      "value": "sk-f7af8614b4b547f3bbeb7e33d8f62f11"
+    },
+    {
+      "name": "ARCHITECT_DOSSIER_LLM_BASE_URL",
+      "value": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    {
+      "name": "ARCHITECT_DOSSIER_LLM_MODEL",
+      "value": "Qwen3.5-flash"
+    },
+    {
+      "name": "ARCHITECT_DOSSIER_LLM_ENABLE_THINKING",
+      "value": "false"
+    },
+    {
+      "name": "RUNTIME_LLM_API_KEY",
+      "value": "ms-66bb4b4b-2ddb-4906-9579-c6159234e9a2"
+    },
+    {
+      "name": "RUNTIME_LLM_BASE_URL",
+      "value": "https://api-inference.modelscope.cn/v1"
+    },
+    {
+      "name": "RUNTIME_LLM_MODEL",
+      "value": "deepseek-ai/DeepSeek-V3.2"
+    }
+  ]
+}

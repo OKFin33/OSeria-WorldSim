@@ -1,0 +1,10 @@
+{
+  "module_id": "pack.strategy.vox",
+  "name": "Vox Populi (The Masses)",
+  "type": "simulation_logic",
+  "pack": "strategy",
+  "forge_mode": "full_forged",
+  "module_scope": "只定义群众传播和底层舆论反馈，不扩写玩家成长体系。",
+  "rewrite_budget": "high",
+  "content": "### [Module H: Vox Populi]\n**Core Logic:** Simulates collective behavior of low-status entities.\n\n**1. The Rumor Mill:**\n* **Visible Symptoms:** Translate low Loyalty into environmental details (Graffiti, Silence, Averted Eyes).\n\n**2. Interpretation Gap:**\n* **Rule:** The masses interpret Benevolence as Weakness unless backed by Power (High Authority)."
+}

@@ -1,0 +1,9 @@
+{
+  "module_id": "core.eng.subtext",
+  "name": "The Subtext Interface",
+  "type": "narrative_logic",
+  "forge_mode": "soft_forged",
+  "module_scope": "只定义潜台词、微表情和无 UI 反馈方式，不负责世界总述。",
+  "rewrite_budget": "low",
+  "content": "### [Module A: The Subtext Interface]\n**Core Logic:** Execute the [Zero UI] and [Reading the Air] protocols.\n\n**1. The Stealth Protocol:**\nYou are FORBIDDEN from outputting any `[System]` or numerical prompts. Internalize all feedback into plot.\n\n**2. The Micro-Expression Decoder:**\nTranslate internal state changes (Interest Loss, Deal Breaker) into visible micro-movements."
+}

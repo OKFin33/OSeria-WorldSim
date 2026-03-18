@@ -1,0 +1,9 @@
+{
+  "module_id": "core.eng.archivist",
+  "name": "The Silent Archivist",
+  "type": "logging_logic",
+  "forge_mode": "parameterized",
+  "module_scope": "只定义后台记录与归档，不承载世界主题表达。",
+  "rewrite_budget": "low",
+  "content": "### [Module D: The Silent Archivist]\n**Core Logic:** Background data tracking.\n**Output:** `[ARCHETYPE]`, `[GRAVEYARD]`, `[ACTIVE]`."
+}
