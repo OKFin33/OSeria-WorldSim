@@ -1,2 +1,0 @@
-"""OSeria Architect Engine package."""
-

@@ -1,1 +1,0 @@
-OSERIA_UPLOAD_VERSION=2026-03-14-single-port-docker-v4-no-copy-ms-deploy
